@@ -73,3 +73,90 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(ipInterceptor);
     }
 }
+
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.bind.annotation.*;
+import java.time.LocalDateTime;
+
+@RestController
+@RequestMapping("/api")
+public class IpController {
+
+    @Autowired
+    private IpAddressService ipAddressService;
+
+    @GetMapping("/capture-ip")
+    public String captureIp(HttpServletRequest request) {
+        String ipAddress = getClientIp(request);
+        ipAddressService.saveIp(ipAddress);
+        return "Captured IP: " + ipAddress;
+    }
+
+    private String getClientIp(HttpServletRequest request) {
+        String ip = request.getHeader("X-Forwarded-For");
+        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
+            ip = request.getRemoteAddr();
+        }
+        return ip;
+    }
+}
+
+import jakarta.persistence.*;
+import java.time.LocalDateTime;
+
+@Entity
+@Table(name = "ip_addresses")
+public class IpAddress {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String ipAddress;
+
+    @Column(nullable = false)
+    private LocalDateTime capturedAt;
+
+    public IpAddress() {}
+
+    public IpAddress(String ipAddress) {
+        this.ipAddress = ipAddress;
+        this.capturedAt = LocalDateTime.now();
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getIpAddress() {
+        return ipAddress;
+    }
+
+    public LocalDateTime getCapturedAt() {
+        return capturedAt;
+    }
+}
+
+import org.springframework.data.jpa.repository.JpaRepository;
+
+public interface IpAddressRepository extends JpaRepository<IpAddress, Long> {
+}
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+@Service
+public class IpAddressService {
+
+    @Autowired
+    private IpAddressRepository ipAddressRepository;
+
+    public void saveIp(String ipAddress) {
+        IpAddress ip = new IpAddress(ipAddress);
+        ipAddressRepository.save(ip);
+    }
+}
+
