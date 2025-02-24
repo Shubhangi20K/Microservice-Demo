@@ -1,3 +1,96 @@
+import static org.mockito.Mockito.; import static org.junit.jupiter.api.Assertions.; import com.epay.merchant.config.MerchantConfig; import com.epay.merchant.dao.PasswordManagementDao; import com.epay.merchant.dto.MerchantUserDto; import com.epay.merchant.exception.MerchantException; import com.epay.merchant.exception.ValidationException; import com.epay.merchant.model.request.PasswordChangeRequest; import com.epay.merchant.model.request.PasswordResetRequest; import com.epay.merchant.model.response.MerchantResponse; import com.epay.merchant.service.PasswordService; import com.epay.merchant.util.enums.RequestType; import com.epay.merchant.util.enums.UserStatus; import com.epay.merchant.validator.PasswordValidator; import org.junit.jupiter.api.BeforeEach; import org.junit.jupiter.api.Test; import org.junit.jupiter.api.extension.ExtendWith; import org.mockito.InjectMocks; import org.mockito.Mock; import org.mockito.junit.jupiter.MockitoExtension; import java.util.List;
+
+@ExtendWith(MockitoExtension.class) class PasswordServiceTest {
+
+@Mock
+private PasswordValidator passwordValidator;
+
+@Mock
+private PasswordManagementDao passwordManagementDao;
+
+@Mock
+private MerchantConfig merchantConfig;
+
+@InjectMocks
+private PasswordService passwordService;
+
+private PasswordChangeRequest passwordChangeRequest;
+private PasswordResetRequest passwordResetRequest;
+private MerchantUserDto merchantUser;
+
+@BeforeEach
+void setUp() {
+    passwordChangeRequest = new PasswordChangeRequest();
+    passwordChangeRequest.setUserName("testUser");
+    passwordChangeRequest.setOldPassword("oldPwd");
+    passwordChangeRequest.setNewPassword("newEncryptedPwd");
+    passwordChangeRequest.setConfirmPassword("newEncryptedPwd");
+    
+    passwordResetRequest = new PasswordResetRequest();
+    passwordResetRequest.setUserName("testUser");
+    passwordResetRequest.setNewPassword("newEncryptedPwd");
+    passwordResetRequest.setConfirmPassword("newEncryptedPwd");
+    
+    merchantUser = new MerchantUserDto();
+    merchantUser.setStatus(UserStatus.EXPIRED);
+    merchantUser.setFirstLogin(true);
+}
+
+@Test
+void testChangePassword_Success() {
+    when(merchantConfig.getDecryptionKey()).thenReturn("key");
+    when(passwordManagementDao.findByUserNameOrEmailOrMobilePhoneAndStatus(anyString(), anyList())).thenReturn(merchantUser);
+    doNothing().when(passwordValidator).validateMandatoryFields(passwordChangeRequest);
+    doNothing().when(passwordValidator).validatePasswordValue(anyString(), anyString());
+    doNothing().when(passwordValidator).validatePasswordUpdateWithDB(any(), anyString(), anyString());
+    doNothing().when(passwordManagementDao).updatePasswordDetails(anyString(), anyString(), anyList(), any());
+    
+    MerchantResponse<String> response = passwordService.changePassword(passwordChangeRequest);
+    
+    assertNotNull(response);
+    assertEquals("SUCCESS", response.getStatus());
+    assertEquals("Password Changed Successfully", response.getData().get(0));
+}
+
+@Test
+void testChangePassword_ValidationException() {
+    doThrow(new ValidationException("Validation failed"))
+            .when(passwordValidator).validateMandatoryFields(passwordChangeRequest);
+    
+    assertThrows(ValidationException.class, () -> passwordService.changePassword(passwordChangeRequest));
+}
+
+@Test
+void testResetPassword_Success() {
+    when(merchantConfig.getDecryptionKey()).thenReturn("key");
+    when(passwordManagementDao.findByUserNameOrEmailOrMobilePhoneAndStatus(anyString(), anyList())).thenReturn(merchantUser);
+    doNothing().when(passwordValidator).validateMandatoryFields(passwordResetRequest);
+    doNothing().when(passwordValidator).validatePasswordValue(anyString(), anyString());
+    doNothing().when(passwordValidator).validatePasswordUpdateWithDB(any(), anyString());
+    doNothing().when(passwordManagementDao).updatePasswordDetails(anyString(), anyString(), anyList(), any());
+    
+    MerchantResponse<String> response = passwordService.resetPassword(passwordResetRequest);
+    
+    assertNotNull(response);
+    assertEquals("SUCCESS", response.getStatus());
+    assertEquals("Password Reset Successfully", response.getData().get(0));
+}
+
+@Test
+void testResetPassword_MerchantException() {
+    doThrow(new MerchantException("ERR001", "Error occurred"))
+            .when(passwordManagementDao).updatePasswordDetails(anyString(), anyString(), anyList(), any());
+    
+    assertThrows(MerchantException.class, () -> passwordService.resetPassword(passwordResetRequest));
+}
+
+}
+
+
+
+
+
+
 package com.epay.merchant.service;
 
 import com.epay.merchant.config.MerchantConfig;
