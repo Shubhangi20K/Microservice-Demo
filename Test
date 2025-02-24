@@ -70,3 +70,70 @@ public class PasswordManagementDao {
         // Step 6 : Save Audit Operation
         saveAudit(userName, requestType, true, MessageFormat.format(SUCCESS_MESSAGE, PSW_UPDATED));
     }
+___&&_
+
+import static org.mockito.Mockito.; import static org.junit.jupiter.api.Assertions.;
+
+import org.junit.jupiter.api.BeforeEach; import org.junit.jupiter.api.Test; import org.junit.jupiter.api.extension.ExtendWith; import org.mockito.InjectMocks; import org.mockito.Mock; import org.mockito.junit.jupiter.MockitoExtension; import org.springframework.data.domain.PageRequest; import java.util.*; import java.util.UUID;
+
+@ExtendWith(MockitoExtension.class) class PasswordManagementDaoTest {
+
+@Mock
+private MerchantUserDao merchantUserDao;
+
+@Mock
+private LoginDao loginDao;
+
+@Mock
+private PasswordManagementRepository passwordManagementRepository;
+
+@Mock
+private NotificationDao notificationDao;
+
+@Mock
+private MerchantUserRepository merchantUserRepository;
+
+@InjectMocks
+private PasswordManagementDao passwordManagementDao;
+
+private UUID userId;
+private String userName;
+private List<UserStatus> userStatus;
+private MerchantUserDto merchantUserDto;
+
+@BeforeEach
+void setUp() {
+    userId = UUID.randomUUID();
+    userName = "testUser";
+    userStatus = List.of(UserStatus.ACTIVE);
+    merchantUserDto = new MerchantUserDto();
+    merchantUserDto.setId(userId);
+}
+
+@Test
+void testFindByUserNameOrEmailOrMobilePhoneAndStatus() {
+    when(merchantUserDao.getByUserNameOrEmailOrMobilePhoneAndStatus(userName, userName, userName, userStatus))
+            .thenReturn(merchantUserDto);
+
+    MerchantUserDto result = passwordManagementDao.findByUserNameOrEmailOrMobilePhoneAndStatus(userName, userStatus);
+
+    assertNotNull(result);
+    assertEquals(userId, result.getId());
+    verify(merchantUserDao, times(1)).getByUserNameOrEmailOrMobilePhoneAndStatus(userName, userName, userName, userStatus);
+}
+
+@Test
+void testFindLastPasswordsByUserId() {
+    List<PasswordManagement> passwordList = new ArrayList<>();
+    when(passwordManagementRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, 5)))
+            .thenReturn(passwordList);
+
+    List<PasswordManagement> result = passwordManagementDao.findLastPasswordsByUserId(userId);
+
+    assertNotNull(result);
+    assertEquals(0, result.size());
+    verify(passwordManagementRepository, times(1)).findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, 5));
+}
+
+}
+
