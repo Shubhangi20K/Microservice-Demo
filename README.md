@@ -1,162 +1,53 @@
-import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
-
-@RestController
-@RequestMapping("/api")
-public class IpController {
-
-    @GetMapping("/ip")
-    public String getClientIp(HttpServletRequest request) {
-        String ipAddress = request.getHeader("X-Forwarded-For");
-        if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-            ipAddress = request.getRemoteAddr();
-        }
-        return "Client IP: " + ipAddress;
-    }
-}
-
-
-
-public String getClientIp(HttpServletRequest request) {
-    String ipAddress = request.getHeader("X-Forwarded-For");
-    if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-        ipAddress = request.getHeader("Proxy-Client-IP");
-    }
-    if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-        ipAddress = request.getHeader("WL-Proxy-Client-IP");
-    }
-    if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-        ipAddress = request.getHeader("HTTP_CLIENT_IP");
-    }
-    if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-        ipAddress = request.getHeader("HTTP_X_FORWARDED_FOR");
-    }
-    if (ipAddress == null || ipAddress.isEmpty() || "unknown".equalsIgnoreCase(ipAddress)) {
-        ipAddress = request.getRemoteAddr();
-    }
-    return ipAddress;
-}
-
-import jakarta.servlet.http.HttpServletRequest;
-import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.stereotype.Component;
-import org.springframework.web.servlet.HandlerInterceptor;
-
-@Component
-public class IpInterceptor implements HandlerInterceptor {
-    @Override
-    public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) {
-        String ipAddress = request.getHeader("X-Forwarded-For");
-        if (ipAddress == null || ipAddress.isEmpty()) {
-            ipAddress = request.getRemoteAddr();
-        }
-        System.out.println("Client IP: " + ipAddress);
-        return true;
-    }
-}
-
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-
-@Configuration
-public class WebConfig implements WebMvcConfigurer {
-    @Autowired
-    private IpInterceptor ipInterceptor;
-
-    @Override
-    public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(ipInterceptor);
-    }
-}
-
-
-import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.*;
-import java.time.LocalDateTime;
-
-@RestController
-@RequestMapping("/api")
-public class IpController {
-
-    @Autowired
-    private IpAddressService ipAddressService;
-
-    @GetMapping("/capture-ip")
-    public String captureIp(HttpServletRequest request) {
-        String ipAddress = getClientIp(request);
-        ipAddressService.saveIp(ipAddress);
-        return "Captured IP: " + ipAddress;
-    }
-
-    private String getClientIp(HttpServletRequest request) {
-        String ip = request.getHeader("X-Forwarded-For");
-        if (ip == null || ip.isEmpty() || "unknown".equalsIgnoreCase(ip)) {
-            ip = request.getRemoteAddr();
-        }
-        return ip;
-    }
-}
-
-import jakarta.persistence.*;
-import java.time.LocalDateTime;
-
-@Entity
-@Table(name = "ip_addresses")
-public class IpAddress {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @Column(nullable = false)
-    private String ipAddress;
-
-    @Column(nullable = false)
-    private LocalDateTime capturedAt;
-
-    public IpAddress() {}
-
-    public IpAddress(String ipAddress) {
-        this.ipAddress = ipAddress;
-        this.capturedAt = LocalDateTime.now();
-    }
-
-    public Long getId() {
-        return id;
-    }
-
-    public String getIpAddress() {
-        return ipAddress;
-    }
-
-    public LocalDateTime getCapturedAt() {
-        return capturedAt;
-    }
-}
-
-import org.springframework.data.jpa.repository.JpaRepository;
-
-public interface IpAddressRepository extends JpaRepository<IpAddress, Long> {
-}
-
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.stereotype.Service;
-
 @Service
-public class IpAddressService {
+@RequiredArgsConstructor
+public class PasswordService {
 
-    @Autowired
-    private IpAddressRepository ipAddressRepository;
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
 
-    public void saveIp(String ipAddress) {
-        IpAddress ip = new IpAddress(ipAddress);
-        ipAddressRepository.save(ip);
+    private final PasswordValidator passwordValidator;
+    private final PasswordManagementDao passwordManagementDao;
+    private final MerchantConfig merchantConfig;
+
+    /**
+     * Handles the pwd change process for a user.
+     * @param pwdChangeRequest Request object containing userName, oldPwd, and newPwd.
+     * @return A success response with a message confirming pwd change.
+     */
+    public MerchantResponse<String> changePassword(PasswordChangeRequest pwdChangeRequest) {
+        try {
+            log.info("Starting pwd change process for user: {}", pwdChangeRequest.getUserName());
+            // Step 1: Validate mandatory pwd reset request
+            passwordValidator.validateMandatoryFields(pwdChangeRequest);
+            log.info("PWD change request validated successfully for mandatory field");
+
+            // Step 2 : Decrypt PWD
+            pwdChangeRequest.setNewPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdChangeRequest.getNewPassword()));
+            pwdChangeRequest.setConfirmPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdChangeRequest.getConfirmPassword()));
+            log.info("PWD change request decrypted successfully");
+
+            // Step 3: Validate the pwd change request
+            validatePasswordChange(pwdChangeRequest);
+            log.info("PWD change request validated successfully");
+
+            // Step 4: Update the pwd details in the database. Added active for firstLogin true
+            passwordManagementDao.updatePasswordDetails(pwdChangeRequest.getUserName(), pwdChangeRequest.getNewPassword(), List.of(UserStatus.ACTIVE,UserStatus.EXPIRED), RequestType.CHANGE_PASSWORD);
+
+            // Step 5: Build and return the success response
+            return MerchantResponse.<String>builder().status(MerchantConstant.RESPONSE_SUCCESS).data(List.of("Password Changed Successfully")).count(1L).total(1L).build();
+        } catch (ValidationException e) {
+            e.getErrorMessages().stream().filter(errorCode -> ErrorConstants.MANDATORY_ERROR_CODE.equals(errorCode.getErrorCode())).forEach(errorCode -> {
+                throw e;
+            });
+            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getErrorMessages().stream().map(ErrorDto::toString).collect(Collectors.joining(", ")));
+            log.error("PWD Change Request Validation Failed for PasswordChangeRequest {} ", pwdChangeRequest);
+            throw e;
+        } catch (MerchantException e) {
+            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getErrorMessage());
+            log.error("PWD Change Request Failed for PasswordChangeRequest {} ", pwdChangeRequest);
+            throw e;
+        } catch (Exception e) {
+            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getLocalizedMessage());
+            log.error("PWD Change Request Failed for PasswordChangeRequest {} ", pwdChangeRequest);
+            throw new MerchantException(ErrorConstants.GENERIC_ERROR_CODE, ErrorConstants.GENERIC_ERROR_MESSAGE);
+        }
     }
-}
-
