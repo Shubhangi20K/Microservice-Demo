@@ -1,3 +1,45 @@
+package com.epay.merchant.dao;
+
+import com.epay.merchant.dto.MerchantEmailDto;
+import com.epay.merchant.dto.MerchantSmsDto;
+import com.epay.merchant.dto.MerchantUserDto;
+import com.epay.merchant.entity.MerchantUser;
+import com.epay.merchant.entity.NotificationManagement;
+import com.epay.merchant.entity.PasswordManagement;
+import com.epay.merchant.repository.MerchantUserRepository;
+import com.epay.merchant.repository.PasswordManagementRepository;
+import com.epay.merchant.util.EmailUtil;
+import com.epay.merchant.util.SmsUtil;
+import com.epay.merchant.util.enums.*;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Repository;
+
+import java.text.MessageFormat;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+import static com.epay.merchant.util.EncryptionDecryptionUtil.hashValue;
+import static com.epay.merchant.util.MerchantConstant.*;
+
+/**
+ * Class Name: PwdManagementDao
+ * Description:
+ * PwdManagementDao is responsible for handling the database operations related to pwd management.
+ * It interacts with the PwdManagementRepository to perform CRUD operations on user pwd data,
+ * including pwd reset, update, and validation processes. The class works closely with the MerchantUserDao
+ * to manage user-related data, and with LoginDao to ensure proper user authentication. Additionally, it utilizes
+ * the NotificationDao to send notifications regarding pwd changes, resets, or related security alerts.
+ * Author: Subhra Goswami
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
+ * Version: 1.0
+ */
 @Repository
 @RequiredArgsConstructor
 public class PasswordManagementDao {
@@ -70,70 +112,134 @@ public class PasswordManagementDao {
         // Step 6 : Save Audit Operation
         saveAudit(userName, requestType, true, MessageFormat.format(SUCCESS_MESSAGE, PSW_UPDATED));
     }
-___&&_
 
-import static org.mockito.Mockito.; import static org.junit.jupiter.api.Assertions.;
+    /**
+     * Saves login Audit details in Db
+     *
+     * @param status      boolean
+     * @param userName    String
+     * @param requestType RequestType
+     * @param reason      String
+     */
+    public void saveAudit(String userName, RequestType requestType, boolean status, String reason) {
+        loginDao.saveLoginAudit(userName, requestType, status, reason);
+    }
 
-import org.junit.jupiter.api.BeforeEach; import org.junit.jupiter.api.Test; import org.junit.jupiter.api.extension.ExtendWith; import org.mockito.InjectMocks; import org.mockito.Mock; import org.mockito.junit.jupiter.MockitoExtension; import org.springframework.data.domain.PageRequest; import java.util.*; import java.util.UUID;
+    /**
+     * updatePreviousPwdStatus update pwd status
+     *
+     * @param userId UUID
+     */
+    private void updatePreviousPasswordStatus(UUID userId) {
+        List<PasswordManagement> passwordList = passwordManagementRepository.findByUserIdAndStatus(userId, PasswordStatusType.COMPLETED);
+        passwordList.forEach(passwordManagement -> passwordManagement.setStatus(PasswordStatusType.INACTIVE));
+        passwordManagementRepository.saveAll(passwordList);
+    }
 
-@ExtendWith(MockitoExtension.class) class PasswordManagementDaoTest {
+    /**
+     * This method will update pwd details in the Db
+     *
+     * @param userId   UUID
+     * @param pwd string
+     */
+    private PasswordManagement saveUpdatesPasswordDetails(UUID userId, String pwd, PasswordManagementType passwordManagementType) {
+        return passwordManagementRepository.save(PasswordManagement.builder().userId(userId).status(PasswordStatusType.COMPLETED).previousPassword(pwd).requestType(passwordManagementType).build());
+    }
 
-@Mock
-private MerchantUserDao merchantUserDao;
+    /**
+     * Sends a notification (email and SMS) to the merchant user for pwd generation or reset.
+     *
+     * @param requestType  requestType The type of request (e.g., pwd reset or change).
+     * @param entityId     UUID   The entity ID associated with the request.
+     * @param merchantUser MerchantUserDto The merchant user to whom the notification is sent.
+     * @param pwd     String The generated or updated pwd.
+     */
+    private void sendNotification(RequestType requestType, UUID entityId, MerchantUserDto merchantUser, String pwd) {
+        sendSms(requestType, merchantUser, entityId);
+        sendEmail(requestType, merchantUser, pwd, entityId);
+    }
 
-@Mock
-private LoginDao loginDao;
+    /**
+     * Sends a pwd notification via email to the specified merchant user.
+     *
+     * @param requestType  RequestType The type of request (e.g., pwd reset or change).
+     * @param merchantUser MerchantUserDto The merchant user to whom the email is sent.
+     * @param pwd     String   The generated or updated pwd.
+     * @param entityId     UUID    The entity ID associated with the request.
+     */
+    private void sendEmail(RequestType requestType, MerchantUserDto merchantUser, String pwd, UUID entityId) {
+        String text = RequestType.CHANGE_PASSWORD.equals(requestType) ? CHANGED : RESET;
+        MerchantEmailDto merchantEmailDto = MerchantEmailDto.builder().recipient(merchantUser.getEmail()).body(EmailUtil.generateDefaultContent(MessageFormat.format("Password has been {0} successfully, {1} password is {2}", text, text, pwd))).subject(EMailType.PASSWORD_GENERATION.getSubjectName()).emailTemplate(EMailType.PASSWORD_GENERATION.getTemplateName()).requestType(requestType.getName()).entityId(entityId).entityType(NotificationEntityType.PASSWORD_MANAGEMENT).build();
+        notificationDao.publishEmailNotification(merchantEmailDto, merchantUser.getUserName(), merchantUser.getId());
+    }
 
-@Mock
-private PasswordManagementRepository passwordManagementRepository;
+    /**
+     * Sends a pwd notification via SMS to the specified merchant user.
+     *
+     * @param requestType  RequestType The type of request (e.g., pwd reset or change).
+     * @param merchantUser MerchantUserDto The merchant user to whom the SMS is sent.
+     * @param entityId     UUID    The entity ID associated with the request.
+     */
+    private void sendSms(RequestType requestType, MerchantUserDto merchantUser, UUID entityId) {
+        NotificationManagement notificationMgmt = buildNotificationManagement(requestType, entityId);
+        MerchantSmsDto smsRequest = MerchantSmsDto.builder().mobileNumber(merchantUser.getMobilePhone()).entityId(entityId).entityType(NotificationEntityType.PASSWORD_MANAGEMENT).message(SmsUtil.USER_PASSWORD_REGENERATION_REQUEST).requestType(notificationMgmt.getRequestType()).build();
+        notificationDao.publishSmsNotification(smsRequest, merchantUser.getUserName());
+    }
 
-@Mock
-private NotificationDao notificationDao;
+    /**
+     * Fetch users whose pwd expiry date is passed.
+     * Call batch update to expire pwd and insert audit record.
+     */
+    @Transactional
+    public void processUsersWithExpiredPassword() {
+        logger.info("Find and update Expired pwd - Scheduler start.");
+        long currentTimeStamp = Instant.now().toEpochMilli();
+        logger.info("Current timestamp: "+ currentTimeStamp);
 
-@Mock
-private MerchantUserRepository merchantUserRepository;
+        //1- Get list of Merchant users who passed pwd expiration time.
+        List<MerchantUser> merchantUsers = merchantUserRepository.findAllByPasswordExpiryTimeLessThanAndStatusNot(currentTimeStamp, UserStatus.EXPIRED);
 
-@InjectMocks
-private PasswordManagementDao passwordManagementDao;
+        //2- Check collection for users.
+        if(!merchantUsers.isEmpty()) {
+            logger.info("Total merchant users: "+merchantUsers.size());
+            batchUpdateForPasswordExpiry(merchantUsers);
+        } else {
+            logger.info("Zero users found with expired pwd - Scheduler End. ");
+        }
+    }
 
-private UUID userId;
-private String userName;
-private List<UserStatus> userStatus;
-private MerchantUserDto merchantUserDto;
+    /**
+     * Set status as auto expired
+     *
+     * @param merchantUsers - List of merchant users pwd passed expiry date.
+     */
+    private void batchUpdateForPasswordExpiry(List<MerchantUser> merchantUsers) {
+        List<PasswordManagement> passwordHistory = new ArrayList<>();
 
-@BeforeEach
-void setUp() {
-    userId = UUID.randomUUID();
-    userName = "testUser";
-    userStatus = List.of(UserStatus.ACTIVE);
-    merchantUserDto = new MerchantUserDto();
-    merchantUserDto.setId(userId);
+        merchantUsers.forEach( merchantUser -> {
+            long currTimeStamp = Instant.now().toEpochMilli();
+            PasswordManagement  mph = PasswordManagement.builder()
+                    .userId(merchantUser.getId())
+                    .status(PasswordStatusType.EXPIRED)
+                    .previousPassword(merchantUser.getPassword())
+                    .requestType(PasswordManagementType.AUTO_EXPIRE_PASSWORD)
+                    .createdAt(merchantUser.getCreatedAt())
+                    .updatedAt(currTimeStamp)
+                    .build();
+            passwordHistory.add(mph);
+
+            merchantUser.setStatus(UserStatus.EXPIRED);
+            merchantUser.setUpdatedAt(currTimeStamp);
+        });
+
+        if(!passwordHistory.isEmpty()) {
+            // Save pwd history.
+            logger.info("pwd history records: "+passwordHistory.size());
+            passwordManagementRepository.saveAllAndFlush(passwordHistory);
+        }
+        // Update merchant users (expired pwd)
+        merchantUserRepository.saveAllAndFlush(merchantUsers);
+    }
+
+
 }
-
-@Test
-void testFindByUserNameOrEmailOrMobilePhoneAndStatus() {
-    when(merchantUserDao.getByUserNameOrEmailOrMobilePhoneAndStatus(userName, userName, userName, userStatus))
-            .thenReturn(merchantUserDto);
-
-    MerchantUserDto result = passwordManagementDao.findByUserNameOrEmailOrMobilePhoneAndStatus(userName, userStatus);
-
-    assertNotNull(result);
-    assertEquals(userId, result.getId());
-    verify(merchantUserDao, times(1)).getByUserNameOrEmailOrMobilePhoneAndStatus(userName, userName, userName, userStatus);
-}
-
-@Test
-void testFindLastPasswordsByUserId() {
-    List<PasswordManagement> passwordList = new ArrayList<>();
-    when(passwordManagementRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, 5)))
-            .thenReturn(passwordList);
-
-    List<PasswordManagement> result = passwordManagementDao.findLastPasswordsByUserId(userId);
-
-    assertNotNull(result);
-    assertEquals(0, result.size());
-    verify(passwordManagementRepository, times(1)).findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(0, 5));
-}
-
-}
-
