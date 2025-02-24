@@ -51,3 +51,64 @@ public class PasswordService {
             throw new MerchantException(ErrorConstants.GENERIC_ERROR_CODE, ErrorConstants.GENERIC_ERROR_MESSAGE);
         }
     }
+_________
+import static org.junit.jupiter.api.Assertions.; import static org.mockito.Mockito.;
+
+import org.junit.jupiter.api.BeforeEach; import org.junit.jupiter.api.Test; import org.junit.jupiter.api.extension.ExtendWith; import org.mockito.InjectMocks; import org.mockito.Mock; import org.mockito.junit.jupiter.MockitoExtension;
+
+import java.util.List;
+
+@ExtendWith(MockitoExtension.class) class PasswordServiceTest {
+
+@Mock
+private PasswordValidator passwordValidator;
+
+@Mock
+private PasswordManagementDao passwordManagementDao;
+
+@Mock
+private MerchantConfig merchantConfig;
+
+@InjectMocks
+private PasswordService passwordService;
+
+private PasswordChangeRequest pwdChangeRequest;
+
+@BeforeEach
+void setUp() {
+    pwdChangeRequest = new PasswordChangeRequest();
+    pwdChangeRequest.setUserName("testUser");
+    pwdChangeRequest.setOldPassword("oldPwd");
+    pwdChangeRequest.setNewPassword("encryptedNewPwd");
+    pwdChangeRequest.setConfirmPassword("encryptedNewPwd");
+}
+
+@Test
+void testChangePassword_Success() throws Exception {
+    when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
+    when(passwordManagementDao.updatePasswordDetails(anyString(), anyString(), anyList(), any())).thenReturn(true);
+
+    MerchantResponse<String> response = passwordService.changePassword(pwdChangeRequest);
+
+    assertNotNull(response);
+    assertEquals(MerchantConstant.RESPONSE_SUCCESS, response.getStatus());
+    assertEquals("Password Changed Successfully", response.getData().get(0));
+}
+
+@Test
+void testChangePassword_ValidationException() {
+    doThrow(new ValidationException("Validation Failed"))
+            .when(passwordValidator).validateMandatoryFields(any());
+
+    assertThrows(ValidationException.class, () -> passwordService.changePassword(pwdChangeRequest));
+}
+
+@Test
+void testChangePassword_MerchantException() {
+    doThrow(new MerchantException("Error Code", "Merchant Error"))
+            .when(passwordManagementDao).updatePasswordDetails(anyString(), anyString(), anyList(), any());
+
+    assertThrows(MerchantException.class, () -> passwordService.changePassword(pwdChangeRequest));
+}
+
+}
