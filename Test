@@ -196,3 +196,71 @@ public class PasswordService {
         passwordManagementDao.processUsersWithExpiredPassword();
     }
 }
+
+____________££
+import static org.junit.jupiter.api.Assertions.; import static org.mockito.Mockito.;
+
+import com.example.model.PasswordChangeRequest; import com.example.model.MerchantResponse; import com.example.exception.ValidationException; import com.example.exception.MerchantException; import com.example.service.PasswordService; import com.example.validator.PasswordValidator; import com.example.dao.PasswordManagementDao; import com.example.config.MerchantConfig;
+
+import org.junit.jupiter.api.BeforeEach; import org.junit.jupiter.api.Test; import org.junit.jupiter.api.extension.ExtendWith; import org.mockito.InjectMocks; import org.mockito.Mock; import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class) public class PasswordServiceTest {
+
+@InjectMocks
+private PasswordService passwordService;
+
+@Mock
+private PasswordValidator passwordValidator;
+
+@Mock
+private PasswordManagementDao passwordManagementDao;
+
+@Mock
+private MerchantConfig merchantConfig;
+
+private PasswordChangeRequest request;
+
+@BeforeEach
+void setUp() {
+    request = new PasswordChangeRequest();
+    request.setUserName("testUser");
+    request.setNewPassword("encryptedNewPassword");
+    request.setConfirmPassword("encryptedNewPassword");
+}
+
+@Test
+void testChangePassword_Success() throws Exception {
+    when(merchantConfig.getDecryptionKey()).thenReturn("testKey");
+    when(passwordManagementDao.updatePasswordDetails(anyString(), anyString(), any())).thenReturn(1);
+
+    MerchantResponse response = passwordService.changePassword(request);
+
+    assertNotNull(response);
+    assertEquals("Password Changed Successfully", response.getData().get(0));
+}
+
+@Test
+void testChangePassword_ValidationException() throws Exception {
+    doThrow(new ValidationException("Mandatory field missing"))
+            .when(passwordValidator).validateMandatoryFields(any());
+
+    assertThrows(ValidationException.class, () -> passwordService.changePassword(request));
+}
+
+@Test
+void testChangePassword_MerchantException() throws Exception {
+    doThrow(new MerchantException("MERCHANT_ERROR", "Merchant processing failed"))
+            .when(passwordManagementDao).updatePasswordDetails(anyString(), anyString(), any());
+
+    assertThrows(MerchantException.class, () -> passwordService.changePassword(request));
+}
+
+@Test
+void testChangePassword_GenericException() throws Exception {
+    doThrow(new RuntimeException("Unexpected error"))
+            .when(passwordManagementDao).updatePasswordDetails(anyString(), anyString(), any());
+
+    assertThrows(MerchantException.class, () -> passwordService.changePassword(request));
+}
+
+}
