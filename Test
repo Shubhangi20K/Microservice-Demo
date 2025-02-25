@@ -1,3 +1,89 @@
+Here's a JUnit test case for the validatedActiveMId method in your PasswordService class. Since this method relies on merchantInfoDao.validateActiveMIdAccess(userName, mId), you'll need to mock merchantInfoDao using Mockito.
+
+
+---
+
+JUnit Test Case (Using JUnit 5 & Mockito)
+
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+@ExtendWith(MockitoExtension.class)
+class PasswordServiceTest {
+
+    @Mock
+    private MerchantInfoDao merchantInfoDao; // Mocking dependency
+
+    @InjectMocks
+    private PasswordService passwordService; // Injecting the mock into the class under test
+
+    @BeforeEach
+    void setUp() {
+        // Setup is handled by @InjectMocks and @Mock annotations
+    }
+
+    @Test
+    void testValidatedActiveMId_WhenAccessIsValid_ShouldReturnTrue() {
+        String userName = "testUser";
+        String mId = "MID123";
+
+        // Mock behavior: Simulating that the DAO returns true
+        when(merchantInfoDao.validateActiveMIdAccess(userName, mId)).thenReturn(true);
+
+        // Call the method under test
+        boolean result = passwordService.validatedActiveMId(userName, mId);
+
+        // Assertion: Expecting true
+        assertTrue(result, "Expected validatedActiveMId to return true for valid access");
+    }
+
+    @Test
+    void testValidatedActiveMId_WhenAccessIsInvalid_ShouldReturnFalse() {
+        String userName = "testUser";
+        String mId = "MID123";
+
+        // Mock behavior: Simulating that the DAO returns false
+        when(merchantInfoDao.validateActiveMIdAccess(userName, mId)).thenReturn(false);
+
+        // Call the method under test
+        boolean result = passwordService.validatedActiveMId(userName, mId);
+
+        // Assertion: Expecting false
+        assertFalse(result, "Expected validatedActiveMId to return false for invalid access");
+    }
+}
+
+
+---
+
+Explanation of the Test
+
+1. Mock Dependencies:
+
+merchantInfoDao is mocked because the method calls merchantInfoDao.validateActiveMIdAccess(userName, mId).
+
+
+
+2. Inject Mocks:
+
+@InjectMocks is
+
+
+
+
+
+
+
+
+
+
 public boolean validatedActiveMId(String userName, String mId) {
         log.info("Validating active MID access for userName: {} and mId: {}", userName, mId);
         return merchantInfoDao.validateActiveMIdAccess(userName, mId);
