@@ -1,9 +1,6 @@
-   public void validateUpdateRequest(ThemeDto themeDto) {
-        errorDtoList = new ArrayList<>();
-        checkMandatoryField(MID, themeDto.getMId());
-        checkMandatoryFields("Logo/Primary Color/Secondary Color", themeDto.getLogo(), themeDto.getPrimaryColor(), themeDto.getSecondaryColor());
-        validateFieldsValue(themeDto);
-        validatedMId(themeDto.getMId());
-        validatedAlreadyPresentUpdate(themeDto);
+    void validatedAlreadyPresentCreate(ThemeDto themeDto) {
+        if (themeDao.isPaymentPageThemeExistByMId(themeDto.getMId())) {
+            errorDtoList.add(ErrorDto.builder().errorCode(ErrorConstants.ALREADY_EXIST_ERROR_CODE).errorMessage(MessageFormat.format(ErrorConstants.ALREADY_EXIST_ERROR_MESSAGE, "The theme with MId")).build());
+        }
         throwIfErrors();
     }
