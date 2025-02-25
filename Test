@@ -1,23 +1,128 @@
-protected ThemeDto buildPaymentPageThemeDto(String mId, MultipartFile logoFile, String primaryColor, String secondaryColor) {
-        log.info("Building ThemeDto for mId: {}", mId);
-        return ThemeDto.builder().mId(mId).logo(getBase64(logoFile))
-                .primaryColor(primaryColor).secondaryColor(secondaryColor)
-                .module(MerchantConstant.THEME_PAYMENT).build();
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.apache.commons.lang3.StringUtils;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.web.multipart.MultipartFile;
+
+@ExtendWith(MockitoExtension.class)
+class ThemeServiceTest {
+
+    @Mock
+    private ThemeValidator themeValidator;
+
+    @Mock
+    private ThemeDao themeDao;
+
+    @Mock
+    private MultipartFile logoFile;
+
+    @InjectMocks
+    private ThemeService themeService; // The class containing saveTheme()
+
+    private final String mId = "merchant123";
+    private final String primaryColor = "#FF5733";
+    private final String secondaryColor = "#33FF57";
+    
+    @BeforeEach
+    void setUp() {
+        themeService = new ThemeService(themeValidator, themeDao); // Ensure constructor injection
     }
 
+    @Test
+    void testSaveTheme_NewTheme_Success() {
+        // Mock behavior for getBase64()
+        ThemeService spyService = spy(themeService);
+        doReturn("base64EncodedLogo").when(spyService).getBase64(logoFile);
 
-  protected ThemeDto saveTheme(MultipartFile logoFile, String mId, String primaryColor, String secondaryColor, boolean isUpdate) {
-        log.info("Saving theme for mId: {}, isUpdate: {}", mId, isUpdate);
-        ThemeDto themeDto = buildPaymentPageThemeDto(mId, logoFile, primaryColor, secondaryColor);
-        themeValidator.validateLogo(logoFile, isUpdate);
-        if (isUpdate) {
-            themeValidator.validateUpdateRequest(themeDto);
-            log.info("Updating existing theme for mId: {}", mId);
-            return themeDao.updatePaymentPageTheme(themeDto);
-        }
-        themeValidator.validateSaveRequest(themeDto);
-        if(StringUtils.isAllEmpty(themeDto.getPrimaryColor(), themeDto.getSecondaryColor()))
-            themeDto.setDefaultTheme(true);
-        log.info("Creating new theme for mId: {}", mId);
-        return themeDao.createPaymentPageTheme(themeDto);
+        // Prepare expected ThemeDto
+        ThemeDto expectedTheme = ThemeDto.builder()
+                .mId(mId)
+                .logo("base64EncodedLogo")
+                .primaryColor(primaryColor)
+                .secondaryColor(secondaryColor)
+                .module(MerchantConstant.THEME_PAYMENT)
+                .build();
+
+        // Mock validations
+        doNothing().when(themeValidator).validateLogo(logoFile, false);
+        doNothing().when(themeValidator).validateSaveRequest(any(ThemeDto.class));
+
+        // Mock DAO call
+        when(themeDao.createPaymentPageTheme(any(ThemeDto.class))).thenReturn(expectedTheme);
+
+        // Call method
+        ThemeDto result = spyService.saveTheme(logoFile, mId, primaryColor, secondaryColor, false);
+
+        // Assertions
+        assertNotNull(result);
+        assertEquals(mId, result.getMId());
+        assertEquals("base64EncodedLogo", result.getLogo());
+        assertEquals(primaryColor, result.getPrimaryColor());
+        assertEquals(secondaryColor, result.getSecondaryColor());
+
+        // Verify interactions
+        verify(themeValidator).validateLogo(logoFile, false);
+        verify(themeValidator).validateSaveRequest(any(ThemeDto.class));
+        verify(themeDao).createPaymentPageTheme(any(ThemeDto.class));
     }
+
+    @Test
+    void testSaveTheme_UpdateTheme_Success() {
+        ThemeService spyService = spy(themeService);
+        doReturn("base64EncodedLogo").when(spyService).getBase64(logoFile);
+
+        ThemeDto expectedTheme = ThemeDto.builder()
+                .mId(mId)
+                .logo("base64EncodedLogo")
+                .primaryColor(primaryColor)
+                .secondaryColor(secondaryColor)
+                .module(MerchantConstant.THEME_PAYMENT)
+                .build();
+
+        doNothing().when(themeValidator).validateLogo(logoFile, true);
+        doNothing().when(themeValidator).validateUpdateRequest(any(ThemeDto.class));
+        when(themeDao.updatePaymentPageTheme(any(ThemeDto.class))).thenReturn(expectedTheme);
+
+        ThemeDto result = spyService.saveTheme(logoFile, mId, primaryColor, secondaryColor, true);
+
+        assertNotNull(result);
+        assertEquals(mId, result.getMId());
+        assertEquals(primaryColor, result.getPrimaryColor());
+
+        verify(themeValidator).validateLogo(logoFile, true);
+        verify(themeValidator).validateUpdateRequest(any(ThemeDto.class));
+        verify(themeDao).updatePaymentPageTheme(any(ThemeDto.class));
+    }
+
+    @Test
+    void testSaveTheme_WithDefaultTheme() {
+        ThemeService spyService = spy(themeService);
+        doReturn("base64EncodedLogo").when(spyService).getBase64(logoFile);
+
+        doNothing().when(themeValidator).validateLogo(logoFile, false);
+        doNothing().when(themeValidator).validateSaveRequest(any(ThemeDto.class));
+
+        ThemeDto expectedTheme = ThemeDto.builder()
+                .mId(mId)
+                .logo("base64EncodedLogo")
+                .module(MerchantConstant.THEME_PAYMENT)
+                .defaultTheme(true)
+                .build();
+
+        when(themeDao.createPaymentPageTheme(any(ThemeDto.class))).thenReturn(expectedTheme);
+
+        ThemeDto result = spyService.saveTheme(logoFile, mId, "", "", false);
+
+        assertTrue(result.isDefaultTheme());
+
+        verify(themeValidator).validateLogo(logoFile, false);
+        verify(themeValidator).validateSaveRequest(any(ThemeDto.class));
+        verify(themeDao).createPaymentPageTheme(any(ThemeDto.class));
+    }
+}
