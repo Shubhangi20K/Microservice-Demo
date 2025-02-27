@@ -6,4 +6,14 @@ public enum MerchantUserRoles {
 }
 
 
+      
+ void validatedAssignedRole(UUID role) {
         MerchantUserRoles loggedInUserRole = MerchantUserRoles.getRole("USER");
+        MerchantUserRoles userRoleName = MerchantUserRoles.getRole(merchantUserDao.getUserRoleName(role));
+        if (MerchantUserRoles.ADMIN == loggedInUserRole && MerchantUserRoles.SUPER_ADMIN.equals(userRoleName)) {
+            errorDtoList.add(ErrorDto.builder().errorCode(ErrorConstants.INVALID_ERROR_CODE).errorMessage(MessageFormat.format(ErrorConstants.INVALID_ERROR_MESSAGE, ROLE, ADMIN_AND_USER)).build());
+        } else if (MerchantUserRoles.USER == loggedInUserRole && !MerchantUserRoles.USER.equals(userRoleName)) {
+            errorDtoList.add(ErrorDto.builder().errorCode(ErrorConstants.INVALID_ERROR_CODE).errorMessage(MessageFormat.format(ErrorConstants.INVALID_ERROR_MESSAGE, ROLE, TO_BE_ASSIGNED_ROLE_ARE_USER)).build());
+        }
+        throwIfErrors();
+    }
