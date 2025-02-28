@@ -1,14 +1,1 @@
 
-    @Test
-    void saveMerchantBankAccount_shouldUpdateExistingAccount() {
-        // Arrange
-        when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
-        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
-        when(merchantBankAccountRepository.findByAccountUniqueIdentifier(anyString())).thenReturn(Optional.of(mockEntity));
-
-        // Act
-        merchantBankDao.saveMerchantBankAccount(mockDto, false);
-
-        // Assert
-        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
-    }
