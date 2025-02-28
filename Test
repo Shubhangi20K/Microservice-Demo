@@ -28,3 +28,59 @@ void saveMerchantBankAccount_shouldUpdateExistingAccount() {
         verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
     }
 }
+
+
+
+
+
+
+
+
+
+@Test
+void saveMerchantBankAccount_shouldUpdateExistingAccount() {
+    // Arrange
+    String encryptedAccountNumber = "dummyEncryptedValue"; // Simulated encrypted value
+    String decryptedAccountNumber = "9876543210"; // Expected decrypted value
+
+    mockDto.setAccountNumber(encryptedAccountNumber); // Set encrypted value in DTO
+
+    // Ensure mockEntity is not null
+    mockEntity = new MerchantBankAccount();
+    mockEntity.setAccountUniqueIdentifier("12345");
+    mockEntity.setMId("merchantId");
+    mockEntity.setAccountNumber(decryptedAccountNumber);
+
+    System.out.println("Mock Entity Before Mapping: " + mockEntity);
+
+    when(mapper.mapDtoToEntity(mockDto)).thenAnswer(invocation -> {
+        System.out.println("Mapping DTO to Entity...");
+        return mockEntity;  // Ensure it returns a non-null object
+    });
+
+    when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
+    
+    when(merchantBankAccountRepository.findByAccountUniqueIdentifier(anyString()))
+            .thenAnswer(invocation -> {
+                System.out.println("Fetching Merchant Bank Account from DB...");
+                return Optional.of(mockEntity);
+            });
+
+    when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenAnswer(invocation -> {
+        MerchantBankAccount savedEntity = invocation.getArgument(0);
+        System.out.println("Saving Entity: " + savedEntity);
+        return savedEntity;
+    });
+
+    // Mock static decryption utility
+    try (MockedStatic<EncryptionDecryptionUtil> mockedEncryptionUtil = mockStatic(EncryptionDecryptionUtil.class)) {
+        mockedEncryptionUtil.when(() -> EncryptionDecryptionUtil.decryptValue("dummyKey", encryptedAccountNumber))
+                .thenReturn(decryptedAccountNumber);
+
+        // Act
+        merchantBankDao.saveMerchantBankAccount(mockDto, false);
+
+        // Assert
+        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
+    }
+}
