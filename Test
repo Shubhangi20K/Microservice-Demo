@@ -1,141 +1,41 @@
-@Test
-void saveMerchantBankAccount_shouldSaveNewAccountSuccessfully() {
-    // Arrange
-    when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
-    when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
-    when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenReturn(mockEntity);
+    @Test
+    void saveMerchantBankAccount_shouldSaveNewAccountSuccessfully() {
+        // Arrange
+        when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
+        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
+        when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenReturn(mockEntity);
 
-    // Act
-    merchantBankDao.saveMerchantBankAccount(mockDto, true);
+        // Act
+        merchantBankDao.saveMerchantBankAccount(mockDto, true);
 
-    // Assert
-    verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
-}
+        // Assert
+        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
+    }
 
+    @Transactional
+    public void saveMerchantBankAccount(MerchantBankAccountDto merchantBankAccountDto, boolean isCreate) {
+        MerchantBankAccount merchantBankAccount = mapper.mapDtoToEntity(merchantBankAccountDto);
+        //Before masking decrypt the account Number
+        String accountNumber = decryptValue(merchantConfig.getDecryptionKey(), merchantBankAccountDto.getAccountNumber());
+        //Masking accountNumber
+        merchantBankAccount.setAccountNumberMasked(maskAccountNumber(accountNumber));
+        checkPrimaryAccountAndUpdate(merchantBankAccount);
+        saveMerchantBankAccount(isCreate, merchantBankAccount);
+    }
 
-@Test
-void saveMerchantBankAccount_shouldUpdateExistingAccount() {
-    // Arrange
-    when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
-    when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
-    when(merchantBankAccountRepository.findByAccountUniqueIdentifier(anyString())).thenReturn(Optional.of(mockEntity));
+here it's breaking 
+   public static String decryptValue(String key, String value) {
+        return DecryptionService.decryptValueByStringKey(key, value, EncryptionDecryptionAlgo.AES_GCM_NO_PADDING, GCMIvLength.MAXIMUM, GCMTagLength.STANDARD);
+    }
 
-    // Act
-    merchantBankDao.saveMerchantBankAccount(mockDto, false);
-
-    // Assert
-    verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
-}
-
-@Test
-void getMerchantBankAccountByMId_shouldReturnPageOfBankAccounts() {
-    // Arrange
-    Pageable pageable = mock(Pageable.class);
-    Page<MerchantBankAccount> mockPage = new PageImpl<>(List.of(mockEntity));
-    when(merchantBankAccountRepository.findAllBymId("merchantId", pageable)).thenReturn(mockPage);
-    when(mapper.mapEntityToDto(any(MerchantBankAccount.class))).thenReturn(mockDto);
-
-    // Act
-    Page<MerchantBankAccountDto> result = merchantBankDao.getMerchantBankAccountByMId("merchantId", pageable);
-
-    // Assert
-    assertFalse(result.isEmpty());
-    verify(merchantBankAccountRepository, times(1)).findAllBymId("merchantId", pageable);
-}
-
-
-@Test
-void isExistByAccountNumber_shouldReturnTrue_whenAccountExists() {
-    // Arrange
-    when(merchantBankAccountRepository.existsByAccountNumber("9876543210")).thenReturn(true);
-
-    // Act
-    boolean result = merchantBankDao.isExistByAccountNumber("9876543210");
-
-    // Assert
-    assertTrue(result);
-}
-
-
-@Test
-void getAccountByAccountUniqueIdentifier_shouldReturnDto_whenAccountExists() {
-    // Arrange
-    when(merchantBankAccountRepository.findByAccountUniqueIdentifier("12345")).thenReturn(Optional.of(mockEntity));
-    when(mapper.mapEntityToDto(mockEntity)).thenReturn(mockDto);
-
-    // Act
-    MerchantBankAccountDto result = merchantBankDao.getAccountByAccountUniqueIdentifier("12345");
-
-    // Assert
-    assertNotNull(result);
-    assertEquals("12345", result.getAccountUniqueIdentifier());
-}
-
-
-@Test
-void saveMerchantBankAccount_shouldApproveAccountSuccessfully() {
-    // Arrange
-    when(merchantBankAccountRepository.findBymIdAndAccountUniqueIdentifier("merchantId", "12345"))
-            .thenReturn(Optional.of(mockEntity));
-
-    // Act
-    merchantBankDao.saveMerchantBankAccount("merchantId", "12345", true, "");
-
-    // Assert
-    assertEquals(AccountStatus.APPROVED, mockEntity.getStatus());
-    verify(merchantBankAccountRepository, times(1)).save(mockEntity);
-}
-
-
-@Test
-void saveMerchantBankAccount_shouldRejectAccountSuccessfully() {
-    // Arrange
-    when(merchantBankAccountRepository.findBymIdAndAccountUniqueIdentifier("merchantId", "12345"))
-            .thenReturn(Optional.of(mockEntity));
-
-    // Act
-    merchantBankDao.saveMerchantBankAccount("merchantId", "12345", false, "Invalid documents");
-
-    // Assert
-    assertEquals(AccountStatus.REJECTED, mockEntity.getStatus());
-    assertEquals("Invalid documents", mockEntity.getRejectedReason());
-    verify(merchantBankAccountRepository, times(1)).save(mockEntity);
-}
-
-
-
-
-
-
-@Test
-void getAccountByMidAndUniqueIdentifier_shouldThrowException_whenAccountDoesNotExist() {
-    // Arrange
-    when(merchantBankAccountRepository.findBymIdAndAccountUniqueIdentifier("merchantId", "nonexistent"))
-            .thenReturn(Optional.empty());
-
-    // Act & Assert
-    MerchantException exception = assertThrows(MerchantException.class, () ->
-            merchantBankDao.getAccountByMidAndUniqueIdentifier("merchantId", "nonexistent"));
-    assertEquals(ErrorConstants.NOT_FOUND_ERROR_CODE, exception.getErrorCode());
-}
-
-
-
-
-@Test
-void checkPrimaryAccountAndUpdate_shouldUpdateExistingPrimaryAccount() {
-    // Arrange
-    MerchantBankAccount primaryAccount = new MerchantBankAccount();
-    primaryAccount.setPrimary(true);
-    when(merchantBankAccountRepository.findBymIdAndIsPrimaryTrue("merchantId"))
-            .thenReturn(Optional.of(primaryAccount));
-
-    mockEntity.setPrimary(true);
-
-    // Act
-    merchantBankDao.checkPrimaryAccountAndUpdate(mockEntity);
-
-    // Assert
-    assertFalse(primaryAccount.isPrimary());
-    verify(merchantBankAccountRepository, times(1)).save(primaryAccount);
-}
+-9
+java.lang.NegativeArraySizeException: -9
+	at com.sbi.epay.encryptdecrypt.service.DecryptionService.decrypt(DecryptionService.java:98)
+	at com.sbi.epay.encryptdecrypt.service.DecryptionService.decryptValueBySecretKey(DecryptionService.java:67)
+	at com.sbi.epay.encryptdecrypt.service.DecryptionService.decryptValueByStringKey(DecryptionService.java:51)
+	at com.epay.merchant.util.EncryptionDecryptionUtil.decryptValue(EncryptionDecryptionUtil.java:45)
+	at com.epay.merchant.dao.MerchantBankDao.saveMerchantBankAccount(MerchantBankDao.java:60)
+	at com.epay.merchant.dao.MerchantBankDaoTest.saveMerchantBankAccount_shouldSaveNewAccountSuccessfully(MerchantBankDaoTest.java:112)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
