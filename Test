@@ -1,29 +1,93 @@
+@ExtendWith(MockitoExtension.class)
+class MerchantBankDaoTest {
 
-@Repository
-@RequiredArgsConstructor
-public class MerchantBankDao {
+    @InjectMocks
+    private MerchantBankDao merchantBankDao;
 
-    private final MerchantBankAccountRepository merchantBankAccountRepository;
-    private final AlertDao alertDao;
-    private final MerchantMapper mapper;
-    private final MerchantConfig merchantConfig;
+    @Mock
+    private MerchantBankAccountRepository merchantBankAccountRepository;
 
-@Transactional
-    public void saveMerchantBankAccount(MerchantBankAccountDto merchantBankAccountDto, boolean isCreate) {
-        MerchantBankAccount merchantBankAccount = mapper.mapDtoToEntity(merchantBankAccountDto);
-        //Before masking decrypt the account Number
-        String accountNumber = decryptValue(merchantConfig.getDecryptionKey(), merchantBankAccountDto.getAccountNumber());
-        //Masking accountNumber
-        merchantBankAccount.setAccountNumberMasked(maskAccountNumber(accountNumber));
-        checkPrimaryAccountAndUpdate(merchantBankAccount);
-        saveMerchantBankAccount(isCreate, merchantBankAccount);
+    @Mock
+    private AlertDao alertDao;
+
+    @Mock
+    private MerchantMapper mapper;
+
+    @Mock
+    private MerchantConfig merchantConfig;
+
+    @Mock
+    private DecryptionService decryptionService;
+
+    @Mock
+    private EncryptionDecryptionUtil encryptionDecryptionUtil;
+
+    @Test
+    void saveMerchantBankAccount_shouldSaveNewAccountSuccessfully() {
+        // Arrange
+        MerchantBankAccountDto mockDto = new MerchantBankAccountDto();
+        mockDto.setAccountNumber("encryptedAccountNumber");
+
+        MerchantBankAccount mockEntity = new MerchantBankAccount();
+
+        String decryptedAccountNumber = "1234567890";
+        String maskedAccountNumber = "XXXXXX7890";
+
+        when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
+        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
+        when(encryptionDecryptionUtil.decryptValue(anyString(), anyString())).thenReturn(decryptedAccountNumber);
+        when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenReturn(mockEntity);
+
+        // Act
+        merchantBankDao.saveMerchantBankAccount(mockDto, true);
+
+        // Assert
+        assertEquals(maskedAccountNumber, mockEntity.getAccountNumberMasked());
+        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
     }
 
-@UtilityClass
-public class EncryptionDecryptionUtil {
+    @Test
+    void saveMerchantBankAccount_shouldUpdateExistingAccount() {
+        // Arrange
+        MerchantBankAccountDto mockDto = new MerchantBankAccountDto();
+        mockDto.setAccountNumber("encryptedAccountNumber");
 
+        MerchantBankAccount mockEntity = new MerchantBankAccount();
+        mockEntity.setId(1L);
 
-    public static String decryptValue(String key, String value) {
-        return DecryptionService.decryptValueByStringKey(key, value, EncryptionDecryptionAlgo.AES_GCM_NO_PADDING, GCMIvLength.MAXIMUM, GCMTagLength.STANDARD);
+        String decryptedAccountNumber = "1234567890";
+        String maskedAccountNumber = "XXXXXX7890";
+
+        when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
+        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
+        when(encryptionDecryptionUtil.decryptValue(anyString(), anyString())).thenReturn(decryptedAccountNumber);
+        when(merchantBankAccountRepository.findByAccountUniqueIdentifier(anyString()))
+                .thenReturn(Optional.of(mockEntity));
+        when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenReturn(mockEntity);
+
+        // Act
+        merchantBankDao.saveMerchantBankAccount(mockDto, false);
+
+        // Assert
+        assertEquals(maskedAccountNumber, mockEntity.getAccountNumberMasked());
+        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
     }
 
+    @Test
+    void saveMerchantBankAccount_shouldThrowExceptionWhenDecryptionFails() {
+        // Arrange
+        MerchantBankAccountDto mockDto = new MerchantBankAccountDto();
+        mockDto.setAccountNumber("encryptedAccountNumber");
+
+        when(mapper.mapDtoToEntity(mockDto)).thenReturn(new MerchantBankAccount());
+        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
+        when(encryptionDecryptionUtil.decryptValue(anyString(), anyString())).thenThrow(new RuntimeException("Decryption failed"));
+
+        // Act & Assert
+        RuntimeException exception = assertThrows(RuntimeException.class,
+                () -> merchantBankDao.saveMerchantBankAccount(mockDto, true));
+
+        assertEquals("Decryption failed", exception.getMessage());
+        verify(merchantBankAccountRepository, never()).save(any(MerchantBankAccount.class));
+    }
+}
