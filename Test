@@ -18,3 +18,94 @@
     }
 
 not getting executed validateDuplicateMerchantUserOnUpdate because of found 
+
+
+
+The issue you're facing is likely due to the logic inside validateDuplicateMerchantUserOnUpdate. Let's break it down:
+
+Debugging the Issue:
+
+1. Understanding found condition:
+
+boolean found = dbUserName.stream().allMatch(u -> u.equalsIgnoreCase(userName));
+
+allMatch returns true only if all elements in dbUserName match userName (case-insensitive).
+
+If at least one element in dbUserName does not match userName, found becomes false.
+
+
+
+2. Your test case:
+
+List<String> dbUserName = List.of("s", "d");
+when(merchantUserDao.getUserNameByEmailOrMobilePhone("kk@test.com", "7026491458"))
+    .thenReturn(dbUserName);
+
+merchantUserValidator.validateDuplicateMerchantUserOnUpdate("gfydrt", "sh@gmail.com", "9827785643 ");
+
+Here, dbUserName = ["s", "d"] (mocked database values).
+
+userName = "gfydrt".
+
+Since neither "s" nor "d" matches "gfydrt", found = false, and the exception should be thrown.
+
+
+
+
+Possible Reasons Your Method Is Not Being Invoked:
+
+1. Mismatch in Mocked Data:
+
+The method call in your test:
+
+when(merchantUserDao.getUserNameByEmailOrMobilePhone("kk@test.com", "7026491458"))
+
+The method is stubbed to return dbUserName only if it's called with "kk@test.com", "7026491458".
+
+But in your test, you're calling:
+
+merchantUserValidator.validateDuplicateMerchantUserOnUpdate("gfydrt","sh@gmail.com","9827785643 ");
+
+The email and phone ("sh@gmail.com", "9827785643 ") do not match the stubbed values.
+
+So, merchantUserDao.getUserNameByEmailOrMobilePhone likely returns null or an empty list, leading to found = true (since allMatch on an empty list always returns true).
+
+
+
+
+
+2. Trailing Space in Phone Number:
+
+"9827785643 " (extra space) might not match the stubbed "7026491458", causing the mock to return null or an empty list.
+
+Try removing the space:
+
+merchantUserValidator.validateDuplicateMerchantUserOnUpdate("gfydrt","sh@gmail.com","9827785643");
+
+
+
+3. Verify the Stub is Actually Used:
+
+Add this check before calling the method:
+
+System.out.println(merchantUserDao.getUserNameByEmailOrMobilePhone("sh@gmail.com", "9827785643"));
+
+If it prints null or an empty list, the stub is incorrect.
+
+
+
+
+Fix:
+
+Ensure the test data matches the mock:
+
+when(merchantUserDao.getUserNameByEmailOrMobilePhone("sh@gmail.com", "9827785643"))
+    .thenReturn(List.of("s", "d"));
+
+ValidationException exception = assertThrows(ValidationException.class, () -> 
+    merchantUserValidator.validateDuplicateMerchantUserOnUpdate("gfydrt", "sh@gmail.com", "9827785643"));
+assertEquals("7004", exception.getErrorMessages().getFirst().getErrorCode());
+
+
+Let me know if this helps!
+
