@@ -1,19 +1,20 @@
-public enum MerchantUserRoles {
-    SUPER_ADMIN, ADMIN, USER;
-    public static MerchantUserRoles getRole(String role) {
-        return Arrays.stream(values()).filter(r -> r.name().equalsIgnoreCase(role)).findFirst().orElseThrow(() -> new MerchantException(ErrorConstants.INVALID_ERROR_CODE, MessageFormat.format(ErrorConstants.INVALID_ERROR_MESSAGE, "UserRole", "Valid UserRoles are " + Arrays.toString(NotificationType.values()))));
-    }
-}
-
-
-      
- void validatedAssignedRole(UUID role) {
-        MerchantUserRoles loggedInUserRole = MerchantUserRoles.getRole("USER");
-        MerchantUserRoles userRoleName = MerchantUserRoles.getRole(merchantUserDao.getUserRoleName(role));
-        if (MerchantUserRoles.ADMIN == loggedInUserRole && MerchantUserRoles.SUPER_ADMIN.equals(userRoleName)) {
-            errorDtoList.add(ErrorDto.builder().errorCode(ErrorConstants.INVALID_ERROR_CODE).errorMessage(MessageFormat.format(ErrorConstants.INVALID_ERROR_MESSAGE, ROLE, ADMIN_AND_USER)).build());
-        } else if (MerchantUserRoles.USER == loggedInUserRole && !MerchantUserRoles.USER.equals(userRoleName)) {
-            errorDtoList.add(ErrorDto.builder().errorCode(ErrorConstants.INVALID_ERROR_CODE).errorMessage(MessageFormat.format(ErrorConstants.INVALID_ERROR_MESSAGE, ROLE, TO_BE_ASSIGNED_ROLE_ARE_USER)).build());
+   void validateDuplicateMerchantUserOnUpdate(String userName, String email, String mobilePhone) {
+        List<String> dbUserName = merchantUserDao.getUserNameByEmailOrMobilePhone(email, mobilePhone);
+        boolean found = dbUserName.stream().allMatch(u -> u.equalsIgnoreCase(userName));
+        if (!found) {
+            errorDtoList.add(ErrorDto.builder().errorCode(ErrorConstants.ALREADY_EXIST_ERROR_CODE).errorMessage(MessageFormat.format(USER_ALREADY_EXIST_ERROR_MESSAGE_UPDATE, email, mobilePhone)).build());
+            throwIfErrors();
         }
-        throwIfErrors();
     }
+
+    @Test
+    public void testValidateDuplicateMerchantUserOnUpdateElse()
+    {   List<String> dbUserName=List.of("s","d");
+        when(merchantUserDao.getUserNameByEmailOrMobilePhone("kk@test.com", "7026491458")).thenReturn(dbUserName);
+
+        
+        ValidationException exception = assertThrows(ValidationException.class, () ->   merchantUserValidator.validateDuplicateMerchantUserOnUpdate("gfydrt","sh@gmail.com","9827785643 "));
+        assertEquals(exception.getErrorMessages().getFirst().getErrorCode(),"7004");
+    }
+
+not getting executed validateDuplicateMerchantUserOnUpdate because of found 
