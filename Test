@@ -1,1 +1,25 @@
 
+@Test
+void saveMerchantBankAccount_shouldSaveNewAccountSuccessfully() {
+    // Arrange
+    String encryptedAccountNumber = "dummyEncryptedValue"; // Mocked encrypted value
+    String decryptedAccountNumber = "9876543210"; // Expected decrypted value
+
+    mockDto.setAccountNumber(encryptedAccountNumber); // Set encrypted value in DTO
+
+    when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
+    when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
+    when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenReturn(mockEntity);
+
+    // Mock decryption behavior to return the expected decrypted value
+    try (MockedStatic<EncryptionDecryptionUtil> mockedEncryptionUtil = mockStatic(EncryptionDecryptionUtil.class)) {
+        mockedEncryptionUtil.when(() -> EncryptionDecryptionUtil.decryptValue("dummyKey", encryptedAccountNumber))
+                .thenReturn(decryptedAccountNumber);
+
+        // Act
+        merchantBankDao.saveMerchantBankAccount(mockDto, true);
+
+        // Assert
+        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
+    }
+}
