@@ -1,66 +1,29 @@
-@ExtendWith(MockitoExtension.class)
-class MerchantBankDaoTest {
 
-    @InjectMocks
-    private MerchantBankDao merchantBankDao;
+@Repository
+@RequiredArgsConstructor
+public class MerchantBankDao {
 
-    @Mock
-    private MerchantBankAccountRepository merchantBankAccountRepository;
+    private final MerchantBankAccountRepository merchantBankAccountRepository;
+    private final AlertDao alertDao;
+    private final MerchantMapper mapper;
+    private final MerchantConfig merchantConfig;
 
-    @Mock
-    private AlertDao alertDao;
-
-    @Mock
-    private MerchantMapper mapper;
-
-    @Mock
-    private MerchantConfig merchantConfig;
-
-    @Test
-    void setMerchantAccountDBValueOnUpdate_shouldCopyValuesFromDatabase() {
-        // Arrange
-        String accountUniqueId = "12345";
-
-        MerchantBankAccount dbMerchantBankAccount = new MerchantBankAccount();
-        dbMerchantBankAccount.setId(1L);
-        dbMerchantBankAccount.setCreatedAt(LocalDateTime.of(2023, 5, 15, 10, 30));
-        dbMerchantBankAccount.setCreatedBy("admin");
-        dbMerchantBankAccount.setAccountUniqueIdentifier(accountUniqueId);
-
-        MerchantBankAccount merchantBankAccount = new MerchantBankAccount();
-        merchantBankAccount.setAccountUniqueIdentifier(accountUniqueId);
-
-        when(merchantBankAccountRepository.findByAccountUniqueIdentifier(accountUniqueId))
-                .thenReturn(Optional.of(dbMerchantBankAccount));
-
-        // Act
-        merchantBankDao.setMerchantAccountDBValueOnUpdate(merchantBankAccount);
-
-        // Assert
-        assertEquals(dbMerchantBankAccount.getId(), merchantBankAccount.getId());
-        assertEquals(dbMerchantBankAccount.getCreatedAt(), merchantBankAccount.getCreatedAt());
-        assertEquals(dbMerchantBankAccount.getCreatedBy(), merchantBankAccount.getCreatedBy());
-
-        verify(merchantBankAccountRepository, times(1)).findByAccountUniqueIdentifier(accountUniqueId);
+@Transactional
+    public void saveMerchantBankAccount(MerchantBankAccountDto merchantBankAccountDto, boolean isCreate) {
+        MerchantBankAccount merchantBankAccount = mapper.mapDtoToEntity(merchantBankAccountDto);
+        //Before masking decrypt the account Number
+        String accountNumber = decryptValue(merchantConfig.getDecryptionKey(), merchantBankAccountDto.getAccountNumber());
+        //Masking accountNumber
+        merchantBankAccount.setAccountNumberMasked(maskAccountNumber(accountNumber));
+        checkPrimaryAccountAndUpdate(merchantBankAccount);
+        saveMerchantBankAccount(isCreate, merchantBankAccount);
     }
 
-    @Test
-    void setMerchantAccountDBValueOnUpdate_shouldThrowExceptionWhenAccountNotFound() {
-        // Arrange
-        String accountUniqueId = "12345";
-        MerchantBankAccount merchantBankAccount = new MerchantBankAccount();
-        merchantBankAccount.setAccountUniqueIdentifier(accountUniqueId);
+@UtilityClass
+public class EncryptionDecryptionUtil {
 
-        when(merchantBankAccountRepository.findByAccountUniqueIdentifier(accountUniqueId))
-                .thenReturn(Optional.empty());
 
-        // Act & Assert
-        MerchantException exception = assertThrows(MerchantException.class,
-                () -> merchantBankDao.setMerchantAccountDBValueOnUpdate(merchantBankAccount));
-
-        assertEquals(ErrorConstants.NOT_FOUND_ERROR_CODE, exception.getErrorCode());
-        assertTrue(exception.getMessage().contains("Account Information"));
-
-        verify(merchantBankAccountRepository, times(1)).findByAccountUniqueIdentifier(accountUniqueId);
+    public static String decryptValue(String key, String value) {
+        return DecryptionService.decryptValueByStringKey(key, value, EncryptionDecryptionAlgo.AES_GCM_NO_PADDING, GCMIvLength.MAXIMUM, GCMTagLength.STANDARD);
     }
-}
+
