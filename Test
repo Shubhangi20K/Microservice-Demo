@@ -1,25 +1,19 @@
-@Test
-void saveMerchantBankAccount_shouldUpdateExistingAccount() {
-    // Arrange
-    String encryptedAccountNumber = "dummyEncryptedValue"; // Simulated encrypted value
-    String decryptedAccountNumber = "9876543210"; // Expected decrypted value
+> Task :bootBuildInfo
+> Task :compileJava UP-TO-DATE
+> Task :processResources UP-TO-DATE
+> Task :classes
+> Task :compileTestJava UP-TO-DATE
+> Task :processTestResources NO-SOURCE
+> Task :testClasses UP-TO-DATE
+WARNING: A Java agent has been loaded dynamically (C:\Users\V1014352\.gradle\caches\modules-2\files-2.1\net.bytebuddy\byte-buddy-agent\1.14.19\154da3a65b4f4a909d3e5bdec55d1b2b4cbb6ce1\byte-buddy-agent-1.14.19.jar)
+WARNING: If a serviceability tool is in use, please run with -XX:+EnableDynamicAgentLoading to hide this warning
+WARNING: If a serviceability tool is not in use, please run with -Djdk.instrument.traceUsage for more information
+WARNING: Dynamic loading of agents will be disallowed by default in a future release
 
-    mockDto.setAccountNumber(encryptedAccountNumber); // Set encrypted value in DTO
-
-    when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
-    when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
-    when(merchantBankAccountRepository.findByAccountUniqueIdentifier(anyString())).thenReturn(Optional.of(mockEntity));
-    when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenReturn(mockEntity);
-
-    // Mock static decryption utility
-    try (MockedStatic<EncryptionDecryptionUtil> mockedEncryptionUtil = mockStatic(EncryptionDecryptionUtil.class)) {
-        mockedEncryptionUtil.when(() -> EncryptionDecryptionUtil.decryptValue("dummyKey", encryptedAccountNumber))
-                .thenReturn(decryptedAccountNumber);
-
-        // Act
-        merchantBankDao.saveMerchantBankAccount(mockDto, false);
-
-        // Assert
-        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
-    }
-}
+Cannot invoke "com.epay.merchant.entity.MerchantBankAccount.setAccountNumberMasked(String)" because "merchantBankAccount" is null
+java.lang.NullPointerException: Cannot invoke "com.epay.merchant.entity.MerchantBankAccount.setAccountNumberMasked(String)" because "merchantBankAccount" is null
+	at com.epay.merchant.dao.MerchantBankDao.saveMerchantBankAccount(MerchantBankDao.java:62)
+	at com.epay.merchant.dao.MerchantBankDaoTest.saveMerchantBankAccount_shouldUpdateExistingAccount(MerchantBankDaoTest.java:149)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
