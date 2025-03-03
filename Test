@@ -1,52 +1,51 @@
 package com.sbi.epay.notification.service;
 
-import com.sbi.epay.logging.utility.LoggerFactoryUtility;
-import com.sbi.epay.logging.utility.LoggerUtility;
-import org.springframework.stereotype.Service;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
 import org.thymeleaf.TemplateEngine;
 import org.thymeleaf.context.Context;
 
+import java.util.HashMap;
 import java.util.Map;
 
-/**
- * Class Name: EmailTemplateService
- * *
- * Description:EmailTemplateService is used for generatingEmailTemplateName by taking type and second it is generate email body using template name and content
- * *
- * Author: V1017903 (bhushan wadekar)
- * Copyright (c) 2024 [State Bank of India]
- * All rights reserved
- * *
- * Version:1.0
- */
-@Service
-public class EmailTemplateService {
-    private final TemplateEngine templateEngine;
-    LoggerUtility logger = LoggerFactoryUtility.getLogger(EmailService.class);
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.when;
 
-    /**
-     * This constructor used for taking templateEngine
-     *
-     * @param templateEngine TemplateEngine
-     */
-    public EmailTemplateService(TemplateEngine templateEngine) {
-        this.templateEngine = templateEngine;
+class EmailTemplateServiceTest {
+
+    @Mock
+    private TemplateEngine templateEngine;
+
+    @InjectMocks
+    private EmailTemplateService emailTemplateService;
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
     }
 
-    /**
-     * This Method to generate email body using template name and content
-     *
-     * @param template contain name of template
-     * @param fieldValues  contain data we are set into template
-     * @return emailbody
-     */
-    public String generateEmailBody(String template, Map<String, Object> fieldValues) {
-        logger.info("Email creation started for template :{} and value {}", template, fieldValues);
-        Context context = new Context();
-        for (Map.Entry<String, Object> entry : fieldValues.entrySet()) {
-            context.setVariable(entry.getKey(), entry.getValue());
-        }
-        logger.info("Email value setup for template :{} and value {}", template, fieldValues);
-        return templateEngine.process(template, context);
+    @Test
+    void testGenerateEmailBody() {
+        // Arrange
+        String templateName = "testTemplate";
+        Map<String, Object> fieldValues = new HashMap<>();
+        fieldValues.put("name", "John Doe");
+        fieldValues.put("amount", "1000");
+
+        String expectedEmailBody = "<html><body>Email content</body></html>";
+        
+        when(templateEngine.process(eq(templateName), any(Context.class)))
+                .thenReturn(expectedEmailBody);
+
+        // Act
+        String actualEmailBody = emailTemplateService.generateEmailBody(templateName, fieldValues);
+
+        // Assert
+        assertEquals(expectedEmailBody, actualEmailBody);
     }
 }
