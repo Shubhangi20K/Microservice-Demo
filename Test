@@ -57,3 +57,89 @@ public class SmsValidator {
         logger.info("ClassName - SMSValidator,MethodName - validateSMS, method-end");
     }
 }
+
+
+________
+
+package com.sbi.epay.notification.validator;
+
+import com.sbi.epay.notification.exception.NotificationException;
+import com.sbi.epay.notification.model.ErrorDto;
+import com.sbi.epay.notification.model.SmsDto;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
+import org.mockito.Mockito;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class SmsValidatorTest {
+
+    private LoggerUtility mockLogger;
+
+    @BeforeEach
+    void setUp() {
+        mockLogger = Mockito.mock(LoggerUtility.class);
+        SmsValidator.logger = mockLogger; // Injecting mock logger
+    }
+
+    @Test
+    void testValidateSMS_Success() {
+        SmsDto smsDto = new SmsDto();
+        smsDto.setMessage("Hello, this is a test message");
+        smsDto.setMobileNumber("9876543210");
+
+        assertDoesNotThrow(() -> SmsValidator.validateSMS(smsDto));
+
+        verify(mockLogger, times(1)).info(contains("method-start"));
+        verify(mockLogger, times(1)).info(contains("method-end"));
+    }
+
+    @Test
+    void testValidateSMS_MissingMessage() {
+        SmsDto smsDto = new SmsDto();
+        smsDto.setMessage(""); // Empty message
+        smsDto.setMobileNumber("9876543210");
+
+        NotificationException exception = assertThrows(NotificationException.class, () -> SmsValidator.validateSMS(smsDto));
+
+        List<ErrorDto> errorList = exception.getErrors();
+        assertEquals(1, errorList.size());
+        assertEquals("SMS Message is mandatory", errorList.get(0).getMessage()); // Assuming this is the error message
+
+        verify(mockLogger, times(1)).error(contains("Error -> "));
+    }
+
+    @Test
+    void testValidateSMS_MissingMobileNumber() {
+        SmsDto smsDto = new SmsDto();
+        smsDto.setMessage("Test message");
+        smsDto.setMobileNumber(""); // Empty mobile number
+
+        NotificationException exception = assertThrows(NotificationException.class, () -> SmsValidator.validateSMS(smsDto));
+
+        List<ErrorDto> errorList = exception.getErrors();
+        assertEquals(1, errorList.size());
+        assertEquals("Mobile Number is mandatory", errorList.get(0).getMessage()); // Assuming this is the error message
+
+        verify(mockLogger, times(1)).error(contains("Error -> "));
+    }
+
+    @Test
+    void testValidateSMS_BothFieldsMissing() {
+        SmsDto smsDto = new SmsDto();
+        smsDto.setMessage("");
+        smsDto.setMobileNumber("");
+
+        NotificationException exception = assertThrows(NotificationException.class, () -> SmsValidator.validateSMS(smsDto));
+
+        List<ErrorDto> errorList = exception.getErrors();
+        assertEquals(2, errorList.size()); // Expecting two errors
+
+        verify(mockLogger, times(1)).error(contains("Error -> "));
+    }
+}
