@@ -1,51 +1,46 @@
 package com.sbi.epay.notification.service;
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.thymeleaf.TemplateEngine;
-import org.thymeleaf.context.Context;
 
-import java.util.HashMap;
-import java.util.Map;
+import com.sbi.epay.notification.model.EmailDto;
+import com.sbi.epay.notification.exception.NotificationException;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import com.sbi.epay.notification.thirdpartyservice.EmailClient;
+import com.sbi.epay.notification.validator.EmailValidator;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.when;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
 
-class EmailTemplateServiceTest {
+/**
+ * Class Name: EmailService
+ * *
+ * Description:EmailService Class Mainly used for validating the emailDTO and used for sendingMail on taking emailDTO object
+ * *
+ * Author: V1017903 (bhushan wadekar)
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
+ */
 
-    @Mock
-    private TemplateEngine templateEngine;
+@Service
+@RequiredArgsConstructor
+public final class EmailService {
+    private final EmailClient emailClient;
+    LoggerUtility logger = LoggerFactoryUtility.getLogger(EmailService.class);
 
-    @InjectMocks
-    private EmailTemplateService emailTemplateService;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-    }
-
-    @Test
-    void testGenerateEmailBody() {
-        // Arrange
-        String templateName = "testTemplate";
-        Map<String, Object> fieldValues = new HashMap<>();
-        fieldValues.put("name", "John Doe");
-        fieldValues.put("amount", "1000");
-
-        String expectedEmailBody = "<html><body>Email content</body></html>";
-        
-        when(templateEngine.process(eq(templateName), any(Context.class)))
-                .thenReturn(expectedEmailBody);
-
-        // Act
-        String actualEmailBody = emailTemplateService.generateEmailBody(templateName, fieldValues);
-
-        // Assert
-        assertEquals(expectedEmailBody, actualEmailBody);
+    /**
+     * This method that is used for validating emailDTO object and send email
+     *
+     * @param emailDTO object for validating and sending email
+     * @return boolean true or false
+     * @throws NotificationException if any exception occurs
+     */
+    public boolean sendEmail(EmailDto emailDTO) throws NotificationException {
+        logger.info("ClassName - EmailService, MethodName -sendEmail - start");
+        EmailValidator.validateEMAIL(emailDTO);
+        logger.info("ClassName - EmailService, MethodName -sendEmail - end");
+        return emailClient.sendEmail(emailDTO);
     }
 }
+
