@@ -44,3 +44,81 @@ public final class EmailService {
     }
 }
 
+____&_&_____________________
+
+package com.sbi.epay.notification.service;
+
+import com.sbi.epay.notification.exception.NotificationException;
+import com.sbi.epay.notification.model.EmailDto;
+import com.sbi.epay.notification.thirdpartyservice.EmailClient;
+import com.sbi.epay.notification.validator.EmailValidator;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.MockitoAnnotations;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class EmailServiceTest {
+
+    @Mock
+    private EmailClient emailClient;
+
+    @InjectMocks
+    private EmailService emailService;
+
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
+    }
+
+    @Test
+    void testSendEmail_Success() throws NotificationException {
+        // Arrange
+        EmailDto emailDto = new EmailDto();
+        emailDto.setTo("test@example.com");
+        emailDto.setSubject("Test Subject");
+        emailDto.setBody("Test Body");
+
+        when(emailClient.sendEmail(emailDto)).thenReturn(true);
+
+        // Act
+        boolean result = emailService.sendEmail(emailDto);
+
+        // Assert
+        assertTrue(result);
+        verify(emailClient, times(1)).sendEmail(emailDto);
+    }
+
+    @Test
+    void testSendEmail_ValidationException() {
+        // Arrange
+        EmailDto emailDto = new EmailDto(); // Invalid DTO (assuming required fields are missing)
+
+        // Act & Assert
+        assertThrows(NotificationException.class, () -> emailService.sendEmail(emailDto));
+    }
+
+    @Test
+    void testSendEmail_Failure() throws NotificationException {
+        // Arrange
+        EmailDto emailDto = new EmailDto();
+        emailDto.setTo("test@example.com");
+        emailDto.setSubject("Test Subject");
+        emailDto.setBody("Test Body");
+
+        when(emailClient.sendEmail(emailDto)).thenReturn(false);
+
+        // Act
+        boolean result = emailService.sendEmail(emailDto);
+
+        // Assert
+        assertFalse(result);
+        verify(emailClient, times(1)).sendEmail(emailDto);
+    }
+}
