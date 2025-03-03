@@ -1,185 +1,101 @@
-package com.sbi.epay.authentication.service;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 import com.sbi.epay.authentication.exception.EPaySecurityException;
 import com.sbi.epay.authentication.model.AccessTokenRequest;
-import com.sbi.epay.authentication.model.EPayPrincipal;
 import com.sbi.epay.authentication.model.TransactionTokenRequest;
 import com.sbi.epay.authentication.model.UserTokenRequest;
-import com.sbi.epay.authentication.util.EPayAuthenticationConstant;
-import com.sbi.epay.authentication.util.EPayAuthenticationErrorConstants;
-import com.sbi.epay.logging.utility.LoggerFactoryUtility;
-import com.sbi.epay.logging.utility.LoggerUtility;
+import com.sbi.epay.authentication.service.JwtService;
+import com.sbi.epay.authentication.service.AuthenticationUserService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.io.Decoders;
 import io.jsonwebtoken.security.Keys;
-import io.jsonwebtoken.security.SignatureException;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.security.Key;
-import java.text.MessageFormat;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
-import static com.sbi.epay.authentication.util.EPayJwtClaimsSet.*;
+@ExtendWith(MockitoExtension.class)
+class JwtServiceTest {
 
-/**
- * Class Name: JwtService
- * *
- * Description: Service Class for generating and validating JSON Web Tokens (JWT).
- * * This class provides methods to create signed JWTs using various inputs, including username/pwd, API keys, and hashed values.
- * *
- * Author: V1018217(Nirvay K. Bikram)
- * Copyright (c) 2024 [State Bank of India]
- * All rights reserved
- * *
- * Version:1.0
- */
-@Component
-@RequiredArgsConstructor
-public class JwtService {
-    private static final LoggerUtility logger = LoggerFactoryUtility.getLogger(JwtService.class);
+    @InjectMocks
+    private JwtService jwtService;
 
-    private final AuthenticationUserService authenticationUserService;
-    @Value("${security.jwt.secret.key}")
-    private String secretKey;
-    @Value("${security.jwt.secret.issuer}")
-    private String issuer;
+    @Mock
+    private AuthenticationUserService authenticationUserService;
 
-    /**
-     * Generates a JWT token with the specified claims, username, and expiration time.
-     *
-     * @param claims         A map of claims to include in the token.
-     * @param userName       The username used to sign the token.
-     * @param expirationTime The expiration time of the token in milliseconds.
-     * @return A signed JWT token as a string.
-     */
-    private String generateToken(Map<String, Object> claims, String userName, long expirationTime) {
-        logger.info("ClassName - JwtService,MethodName - generateToken,generate a JWT token  with the specified claims, username, and expiration time.");
-        Claims jwtClaims = Jwts.claims(claims);
-        jwtClaims.setSubject(userName);
-        jwtClaims.setIssuer(issuer);
-        jwtClaims.setIssuedAt(new Date(System.currentTimeMillis()));
-        jwtClaims.setExpiration(new Date(expirationTime));
-        return Jwts.builder().setClaims(jwtClaims).signWith(getSignKey(), SignatureAlgorithm.HS512).compact();
+    private String secretKey = "testsecretkey12345678901234567890123456789012"; // 32+ bytes key
+    private String issuer = "TestIssuer";
+
+    @BeforeEach
+    void setUp() {
+        ReflectionTestUtils.setField(jwtService, "secretKey", secretKey);
+        ReflectionTestUtils.setField(jwtService, "issuer", issuer);
     }
 
-    /**
-     * Generates a JWT token using a username, expirationTime and role.
-     *
-     * @param userTokenRequest UserTokenRequest
-     * @return A signed JWT token as a string.
-     */
-    public String generateUserLoginToken(UserTokenRequest userTokenRequest) {
-        logger.info("ClassName - JwtService,MethodName - generateTokenWithUsernamePwd, Generates a JWT token using a username, expirationTime and role.");
+    @Test
+    void generateUserLoginToken_ShouldReturnValidToken() {
+        UserTokenRequest userTokenRequest = new UserTokenRequest("testUser", "ROLE_USER", "USER_TYPE", System.currentTimeMillis() + 60000);
+        String token = jwtService.generateUserLoginToken(userTokenRequest);
+        assertNotNull(token);
+    }
+
+    @Test
+    void generateAccessToken_ShouldReturnValidToken() {
+        AccessTokenRequest accessTokenRequest = new AccessTokenRequest("testUser", "12345", "ROLE_ADMIN", "ACCESS_TYPE", System.currentTimeMillis() + 60000);
+        String token = jwtService.generateAccessToken(accessTokenRequest);
+        assertNotNull(token);
+    }
+
+    @Test
+    void generateTransactionToken_ShouldReturnValidToken() {
+        TransactionTokenRequest transactionTokenRequest = new TransactionTokenRequest("testOrder", "12345", "testUser", "ROLE_USER", "TXN_TYPE", "ref123", System.currentTimeMillis() + 60000);
+        String token = jwtService.generateTransactionToken(transactionTokenRequest);
+        assertNotNull(token);
+    }
+
+    @Test
+    void verifyJwtTokenAndGetClaims_WhenTokenIsValid_ShouldReturnClaims() {
+        String token = generateTestToken("testUser", System.currentTimeMillis() + 60000);
+
+        Claims claims = jwtService.verifyJwtTokenAndGetClaims(token);
+        assertNotNull(claims);
+        assertEquals("testUser", claims.getSubject());
+    }
+
+    @Test
+    void verifyJwtTokenAndGetClaims_WhenTokenIsExpired_ShouldThrowException() {
+        String expiredToken = generateTestToken("testUser", System.currentTimeMillis() - 10000);
+        Exception exception = assertThrows(IllegalStateException.class, () -> jwtService.verifyJwtTokenAndGetClaims(expiredToken));
+        assertEquals("TOKEN_EXPIRED", exception.getMessage());
+    }
+
+    private String generateTestToken(String username, long expirationTime) {
         Map<String, Object> claims = new HashMap<>();
-        claims.put(USERNAME, userTokenRequest.getUsername());
-        claims.put(ROLE, userTokenRequest.getRoles());
-        claims.put(TYPE, userTokenRequest.getTokenType());
-        return generateToken(claims, userTokenRequest.getUsername(), userTokenRequest.getExpirationTime());
+        claims.put("username", username);
+        claims.put("role", "ROLE_USER");
+
+        return Jwts.builder()
+                .setClaims(claims)
+                .setSubject(username)
+                .setIssuer(issuer)
+                .setIssuedAt(new Date(System.currentTimeMillis()))
+                .setExpiration(new Date(expirationTime))
+                .signWith(getSignKey())
+                .compact();
     }
 
-    /**
-     * GenerateAccessToken method generateAccessToken and takes accessTokenRequest as parameter.
-     *
-     * @param accessTokenRequest AccessTokenRequest
-     * @return A signed JWT token as a string.
-     */
-    public String generateAccessToken(AccessTokenRequest accessTokenRequest) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put(USERNAME, accessTokenRequest.getUsername());
-        claims.put(MID, accessTokenRequest.getMId());
-        claims.put(ROLE, accessTokenRequest.getRoles());
-        claims.put(TYPE, accessTokenRequest.getTokenType());
-        return generateToken(claims, accessTokenRequest.getUsername(), accessTokenRequest.getExpirationTime());
-    }
-
-    /**
-     * Generates a JWT token using a hash of the order reference number, expiration time and merchant ID.
-     *
-     * @param transactionTokenRequest TransactionTokenRequest
-     * @return A signed JWT token as a string.
-     */
-    public String generateTransactionToken(TransactionTokenRequest transactionTokenRequest) {
-        logger.info("ClassName - JwtService,MethodName - generateTokenWithHash, Generates a JWT token using a hash of the order reference number, expiration time and merchant ID.");
-        Map<String, Object> claims = new HashMap<>();
-        claims.put(ORDER_NUMBER, transactionTokenRequest.getSbiOrderReferenceNumber());
-        claims.put(MID, transactionTokenRequest.getMId());
-        claims.put(USERNAME, transactionTokenRequest.getSbiOrderReferenceNumber());
-        claims.put(ROLE, transactionTokenRequest.getRoles());
-        claims.put(TYPE, transactionTokenRequest.getTokenType());
-        claims.put(REFERENCE_ID, transactionTokenRequest.getReferenceId());
-        return generateToken(claims, transactionTokenRequest.getUsername(), transactionTokenRequest.getExpirationTime());
-    }
-
-    public Claims verifyJwtTokenAndGetClaims(String token) {
-        Claims claims = getAllClaimsFromToken(token);
-        if (issuer.equalsIgnoreCase(claims.getIssuer())) {
-            if (isTokenExpired(claims.getExpiration())) {
-                throw new IllegalStateException(EPayAuthenticationErrorConstants.TOKEN_EXPIRED);
-            } else if (authenticationUserService.isTokenInValid(token, claims.get(TYPE, String.class))) {
-                throw new IllegalStateException(EPayAuthenticationErrorConstants.INVALID_TOKEN);
-            }
-            String userName = (String) claims.get(USERNAME);
-            String userNameWithTokenType = String.join(EPayAuthenticationConstant.JOINER, (String) claims.get(USERNAME), claims.get(TYPE, String.class));
-            logger.info("Token request received for userNameWithTokenType: {}", userNameWithTokenType);
-            EPayPrincipal ePayPrincipal = authenticationUserService.loadUserByUserName(userNameWithTokenType).orElseThrow(() -> new EPaySecurityException(EPayAuthenticationErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(EPayAuthenticationErrorConstants.NOT_FOUND_ERROR_MESSAGE, EPayAuthenticationErrorConstants.USER_NAME)));
-            logger.info("Token request received for userNameWithTokenType: {}", userNameWithTokenType);
-            if (!ePayPrincipal.getAuthenticationId().equalsIgnoreCase(userName)) {
-                throw new IllegalStateException(EPayAuthenticationErrorConstants.INVALID_USER);
-            }
-        } else {
-            throw new IllegalStateException(EPayAuthenticationErrorConstants.INVALID_ISSUER);
-        }
-        return claims;
-    }
-
-
-    /**
-     * Get all claims from token. and @Param token
-     *
-     * @param token as a String
-     * @return Claims of the token
-     */
-    private Claims getAllClaimsFromToken(String token) {
-        try {
-            logger.info("ClassName - JwtService,MethodName - getAllClaimsFromToken, getting all claims from token.");
-            return Jwts.parserBuilder().setSigningKey(getSignKey()).build().parseClaimsJws(token).getBody();
-        } catch (ExpiredJwtException e) {
-            logger.error("Jwt Token is expired : {}", e.getLocalizedMessage());
-            throw new IllegalStateException(EPayAuthenticationErrorConstants.TOKEN_EXPIRED);
-        }  catch (SignatureException e) {
-            logger.error("Jwt Token is expired : {}", e.getLocalizedMessage());
-            throw new IllegalStateException(EPayAuthenticationErrorConstants.INVALID_TOKEN);
-       }
-
-    }
-
-    /**
-     * Get SigningKey
-     *
-     * @return signed key
-     */
     private Key getSignKey() {
-        logger.info("ClassName - JwtService,MethodName - getSignKey, getting SigningKey.");
-        byte[] keyBytes = Decoders.BASE64.decode(secretKey);
+        byte[] keyBytes = secretKey.getBytes();
         return Keys.hmacShaKeyFor(keyBytes);
     }
-
-    /**
-     * Get expiration time from token
-     *
-     * @param expiration is as Date
-     * @return Boolean true if token is expired otherwise false.
-     */
-    private Boolean isTokenExpired(Date expiration) {
-        logger.info("ClassName - JwtService,MethodName - isTokenExpired, getting expiration time from token.");
-        return expiration.before(new Date());
-    }
-
 }
