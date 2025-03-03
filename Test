@@ -1,101 +1,52 @@
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+package com.sbi.epay.notification.service;
 
-import com.sbi.epay.authentication.exception.EPaySecurityException;
-import com.sbi.epay.authentication.model.AccessTokenRequest;
-import com.sbi.epay.authentication.model.TransactionTokenRequest;
-import com.sbi.epay.authentication.model.UserTokenRequest;
-import com.sbi.epay.authentication.service.JwtService;
-import com.sbi.epay.authentication.service.AuthenticationUserService;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.test.util.ReflectionTestUtils;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import org.springframework.stereotype.Service;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
 
-import java.security.Key;
-import java.util.Date;
-import java.util.HashMap;
 import java.util.Map;
 
-@ExtendWith(MockitoExtension.class)
-class JwtServiceTest {
+/**
+ * Class Name: EmailTemplateService
+ * *
+ * Description:EmailTemplateService is used for generatingEmailTemplateName by taking type and second it is generate email body using template name and content
+ * *
+ * Author: V1017903 (bhushan wadekar)
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
+ */
+@Service
+public class EmailTemplateService {
+    private final TemplateEngine templateEngine;
+    LoggerUtility logger = LoggerFactoryUtility.getLogger(EmailService.class);
 
-    @InjectMocks
-    private JwtService jwtService;
-
-    @Mock
-    private AuthenticationUserService authenticationUserService;
-
-    private String secretKey = "testsecretkey12345678901234567890123456789012"; // 32+ bytes key
-    private String issuer = "TestIssuer";
-
-    @BeforeEach
-    void setUp() {
-        ReflectionTestUtils.setField(jwtService, "secretKey", secretKey);
-        ReflectionTestUtils.setField(jwtService, "issuer", issuer);
+    /**
+     * This constructor used for taking templateEngine
+     *
+     * @param templateEngine TemplateEngine
+     */
+    public EmailTemplateService(TemplateEngine templateEngine) {
+        this.templateEngine = templateEngine;
     }
 
-    @Test
-    void generateUserLoginToken_ShouldReturnValidToken() {
-        UserTokenRequest userTokenRequest = new UserTokenRequest("testUser", "ROLE_USER", "USER_TYPE", System.currentTimeMillis() + 60000);
-        String token = jwtService.generateUserLoginToken(userTokenRequest);
-        assertNotNull(token);
-    }
-
-    @Test
-    void generateAccessToken_ShouldReturnValidToken() {
-        AccessTokenRequest accessTokenRequest = new AccessTokenRequest("testUser", "12345", "ROLE_ADMIN", "ACCESS_TYPE", System.currentTimeMillis() + 60000);
-        String token = jwtService.generateAccessToken(accessTokenRequest);
-        assertNotNull(token);
-    }
-
-    @Test
-    void generateTransactionToken_ShouldReturnValidToken() {
-        TransactionTokenRequest transactionTokenRequest = new TransactionTokenRequest("testOrder", "12345", "testUser", "ROLE_USER", "TXN_TYPE", "ref123", System.currentTimeMillis() + 60000);
-        String token = jwtService.generateTransactionToken(transactionTokenRequest);
-        assertNotNull(token);
-    }
-
-    @Test
-    void verifyJwtTokenAndGetClaims_WhenTokenIsValid_ShouldReturnClaims() {
-        String token = generateTestToken("testUser", System.currentTimeMillis() + 60000);
-
-        Claims claims = jwtService.verifyJwtTokenAndGetClaims(token);
-        assertNotNull(claims);
-        assertEquals("testUser", claims.getSubject());
-    }
-
-    @Test
-    void verifyJwtTokenAndGetClaims_WhenTokenIsExpired_ShouldThrowException() {
-        String expiredToken = generateTestToken("testUser", System.currentTimeMillis() - 10000);
-        Exception exception = assertThrows(IllegalStateException.class, () -> jwtService.verifyJwtTokenAndGetClaims(expiredToken));
-        assertEquals("TOKEN_EXPIRED", exception.getMessage());
-    }
-
-    private String generateTestToken(String username, long expirationTime) {
-        Map<String, Object> claims = new HashMap<>();
-        claims.put("username", username);
-        claims.put("role", "ROLE_USER");
-
-        return Jwts.builder()
-                .setClaims(claims)
-                .setSubject(username)
-                .setIssuer(issuer)
-                .setIssuedAt(new Date(System.currentTimeMillis()))
-                .setExpiration(new Date(expirationTime))
-                .signWith(getSignKey())
-                .compact();
-    }
-
-    private Key getSignKey() {
-        byte[] keyBytes = secretKey.getBytes();
-        return Keys.hmacShaKeyFor(keyBytes);
+    /**
+     * This Method to generate email body using template name and content
+     *
+     * @param template contain name of template
+     * @param fieldValues  contain data we are set into template
+     * @return emailbody
+     */
+    public String generateEmailBody(String template, Map<String, Object> fieldValues) {
+        logger.info("Email creation started for template :{} and value {}", template, fieldValues);
+        Context context = new Context();
+        for (Map.Entry<String, Object> entry : fieldValues.entrySet()) {
+            context.setVariable(entry.getKey(), entry.getValue());
+        }
+        logger.info("Email value setup for template :{} and value {}", template, fieldValues);
+        return templateEngine.process(template, context);
     }
 }
