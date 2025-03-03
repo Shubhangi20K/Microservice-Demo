@@ -1,93 +1,52 @@
-@ExtendWith(MockitoExtension.class)
-class MerchantBankDaoTest {
+package com.sbi.epay.notification.service;
 
-    @InjectMocks
-    private MerchantBankDao merchantBankDao;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import org.springframework.stereotype.Service;
+import org.thymeleaf.TemplateEngine;
+import org.thymeleaf.context.Context;
 
-    @Mock
-    private MerchantBankAccountRepository merchantBankAccountRepository;
+import java.util.Map;
 
-    @Mock
-    private AlertDao alertDao;
+/**
+ * Class Name: EmailTemplateService
+ * *
+ * Description:EmailTemplateService is used for generatingEmailTemplateName by taking type and second it is generate email body using template name and content
+ * *
+ * Author: V1017903 (bhushan wadekar)
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
+ */
+@Service
+public class EmailTemplateService {
+    private final TemplateEngine templateEngine;
+    LoggerUtility logger = LoggerFactoryUtility.getLogger(EmailService.class);
 
-    @Mock
-    private MerchantMapper mapper;
-
-    @Mock
-    private MerchantConfig merchantConfig;
-
-    @Mock
-    private DecryptionService decryptionService;
-
-    @Mock
-    private EncryptionDecryptionUtil encryptionDecryptionUtil;
-
-    @Test
-    void saveMerchantBankAccount_shouldSaveNewAccountSuccessfully() {
-        // Arrange
-        MerchantBankAccountDto mockDto = new MerchantBankAccountDto();
-        mockDto.setAccountNumber("encryptedAccountNumber");
-
-        MerchantBankAccount mockEntity = new MerchantBankAccount();
-
-        String decryptedAccountNumber = "1234567890";
-        String maskedAccountNumber = "XXXXXX7890";
-
-        when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
-        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
-        when(encryptionDecryptionUtil.decryptValue(anyString(), anyString())).thenReturn(decryptedAccountNumber);
-        when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenReturn(mockEntity);
-
-        // Act
-        merchantBankDao.saveMerchantBankAccount(mockDto, true);
-
-        // Assert
-        assertEquals(maskedAccountNumber, mockEntity.getAccountNumberMasked());
-        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
+    /**
+     * This constructor used for taking templateEngine
+     *
+     * @param templateEngine TemplateEngine
+     */
+    public EmailTemplateService(TemplateEngine templateEngine) {
+        this.templateEngine = templateEngine;
     }
 
-    @Test
-    void saveMerchantBankAccount_shouldUpdateExistingAccount() {
-        // Arrange
-        MerchantBankAccountDto mockDto = new MerchantBankAccountDto();
-        mockDto.setAccountNumber("encryptedAccountNumber");
-
-        MerchantBankAccount mockEntity = new MerchantBankAccount();
-        mockEntity.setId(1L);
-
-        String decryptedAccountNumber = "1234567890";
-        String maskedAccountNumber = "XXXXXX7890";
-
-        when(mapper.mapDtoToEntity(mockDto)).thenReturn(mockEntity);
-        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
-        when(encryptionDecryptionUtil.decryptValue(anyString(), anyString())).thenReturn(decryptedAccountNumber);
-        when(merchantBankAccountRepository.findByAccountUniqueIdentifier(anyString()))
-                .thenReturn(Optional.of(mockEntity));
-        when(merchantBankAccountRepository.save(any(MerchantBankAccount.class))).thenReturn(mockEntity);
-
-        // Act
-        merchantBankDao.saveMerchantBankAccount(mockDto, false);
-
-        // Assert
-        assertEquals(maskedAccountNumber, mockEntity.getAccountNumberMasked());
-        verify(merchantBankAccountRepository, times(1)).save(any(MerchantBankAccount.class));
-    }
-
-    @Test
-    void saveMerchantBankAccount_shouldThrowExceptionWhenDecryptionFails() {
-        // Arrange
-        MerchantBankAccountDto mockDto = new MerchantBankAccountDto();
-        mockDto.setAccountNumber("encryptedAccountNumber");
-
-        when(mapper.mapDtoToEntity(mockDto)).thenReturn(new MerchantBankAccount());
-        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
-        when(encryptionDecryptionUtil.decryptValue(anyString(), anyString())).thenThrow(new RuntimeException("Decryption failed"));
-
-        // Act & Assert
-        RuntimeException exception = assertThrows(RuntimeException.class,
-                () -> merchantBankDao.saveMerchantBankAccount(mockDto, true));
-
-        assertEquals("Decryption failed", exception.getMessage());
-        verify(merchantBankAccountRepository, never()).save(any(MerchantBankAccount.class));
+    /**
+     * This Method to generate email body using template name and content
+     *
+     * @param template contain name of template
+     * @param fieldValues  contain data we are set into template
+     * @return emailbody
+     */
+    public String generateEmailBody(String template, Map<String, Object> fieldValues) {
+        logger.info("Email creation started for template :{} and value {}", template, fieldValues);
+        Context context = new Context();
+        for (Map.Entry<String, Object> entry : fieldValues.entrySet()) {
+            context.setVariable(entry.getKey(), entry.getValue());
+        }
+        logger.info("Email value setup for template :{} and value {}", template, fieldValues);
+        return templateEngine.process(template, context);
     }
 }
