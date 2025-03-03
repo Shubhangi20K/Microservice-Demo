@@ -1,124 +1,59 @@
-package com.sbi.epay.notification.service;
+package com.sbi.epay.notification.validator;
 
-
-import com.sbi.epay.notification.model.EmailDto;
 import com.sbi.epay.notification.exception.NotificationException;
+import com.sbi.epay.notification.model.ErrorDto;
+import com.sbi.epay.notification.model.SmsDto;
+import com.sbi.epay.notification.util.NotificationConstant;
 import com.sbi.epay.logging.utility.LoggerFactoryUtility;
 import com.sbi.epay.logging.utility.LoggerUtility;
-import com.sbi.epay.notification.thirdpartyservice.EmailClient;
-import com.sbi.epay.notification.validator.EmailValidator;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.util.CollectionUtils;
 
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
+import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Class Name: EmailService
+ * Class Name: SMSValidator
  * *
- * Description:EmailService Class Mainly used for validating the emailDTO and used for sendingMail on taking emailDTO object
+ * Description:main purpose of this class is to take SMS DTO as parameter and check that each parameter weather they contain value or if they do not have value
  * *
- * Author: V1017903 (bhushan wadekar)
+ * Author: V1017903(bhushan wadekar)
  * Copyright (c) 2024 [State Bank of India]
  * All rights reserved
  * *
  * Version:1.0
  */
+public class SmsValidator {
 
-@Service
-@RequiredArgsConstructor
-public final class EmailService {
-    private final EmailClient emailClient;
-    LoggerUtility logger = LoggerFactoryUtility.getLogger(EmailService.class);
-
+    static LoggerUtility logger = LoggerFactoryUtility.getLogger(SmsValidator.class);
     /**
-     * This method that is used for validating emailDTO object and send email
+     * This method will be used for validating the sms
      *
-     * @param emailDTO object for validating and sending email
-     * @return boolean true or false
+     * @param smsRequest for validate sms
      * @throws NotificationException if any exception occurs
      */
-    public boolean sendEmail(EmailDto emailDTO) throws NotificationException {
-        logger.info("ClassName - EmailService, MethodName -sendEmail - start");
-        EmailValidator.validateEMAIL(emailDTO);
-        logger.info("ClassName - EmailService, MethodName -sendEmail - end");
-        return emailClient.sendEmail(emailDTO);
-    }
-}
+    public static void validateSMS(SmsDto smsRequest) throws NotificationException {
+        logger.info("ClassName - SMSValidator,MethodName - validateSMS, method-start");
+        List<ErrorDto> errorList = new ArrayList<>();
 
-____&_&_____________________
+        if (StringUtils.isEmpty(smsRequest.getMessage())) {
+            errorList.add(new ErrorDto(NotificationConstant.MANDATORY_ERROR_CODE, MessageFormat.format(NotificationConstant.MANDATORY_ERROR_MESSAGE, "SMS Message")));
+        }
 
-package com.sbi.epay.notification.service;
+        if (StringUtils.isEmpty(smsRequest.getMobileNumber())) {
+            errorList.add(new ErrorDto(NotificationConstant.MANDATORY_ERROR_CODE, MessageFormat.format(NotificationConstant.MANDATORY_ERROR_MESSAGE, "Mobile Number")));
+        }
 
-import com.sbi.epay.notification.exception.NotificationException;
-import com.sbi.epay.notification.model.EmailDto;
-import com.sbi.epay.notification.thirdpartyservice.EmailClient;
-import com.sbi.epay.notification.validator.EmailValidator;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-@ExtendWith(MockitoExtension.class)
-class EmailServiceTest {
-
-    @Mock
-    private EmailClient emailClient;
-
-    @InjectMocks
-    private EmailService emailService;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
-    }
-
-    @Test
-    void testSendEmail_Success() throws NotificationException {
-        // Arrange
-        EmailDto emailDto = new EmailDto();
-        emailDto.setTo("test@example.com");
-        emailDto.setSubject("Test Subject");
-        emailDto.setBody("Test Body");
-
-        when(emailClient.sendEmail(emailDto)).thenReturn(true);
-
-        // Act
-        boolean result = emailService.sendEmail(emailDto);
-
-        // Assert
-        assertTrue(result);
-        verify(emailClient, times(1)).sendEmail(emailDto);
-    }
-
-    @Test
-    void testSendEmail_ValidationException() {
-        // Arrange
-        EmailDto emailDto = new EmailDto(); // Invalid DTO (assuming required fields are missing)
-
-        // Act & Assert
-        assertThrows(NotificationException.class, () -> emailService.sendEmail(emailDto));
-    }
-
-    @Test
-    void testSendEmail_Failure() throws NotificationException {
-        // Arrange
-        EmailDto emailDto = new EmailDto();
-        emailDto.setTo("test@example.com");
-        emailDto.setSubject("Test Subject");
-        emailDto.setBody("Test Body");
-
-        when(emailClient.sendEmail(emailDto)).thenReturn(false);
-
-        // Act
-        boolean result = emailService.sendEmail(emailDto);
-
-        // Assert
-        assertFalse(result);
-        verify(emailClient, times(1)).sendEmail(emailDto);
+        /**
+         *  this method of Collection.isEmpty check if
+         *  the error list have some error
+         *  then it throw exception
+         **/
+        if (!CollectionUtils.isEmpty(errorList)) {
+            logger.error("Error -> ",errorList);
+            throw new NotificationException(errorList);
+        }
+        logger.info("ClassName - SMSValidator,MethodName - validateSMS, method-end");
     }
 }
