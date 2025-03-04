@@ -72,53 +72,34 @@ public class DecryptionService {
             throw new EncryptionDecryptionException(EncryptionDecryptionConstants.GENERIC_ERROR_CODE, EncryptionDecryptionConstants.GENERIC_ERROR_MESSAGE);
         }
     }
-____________&
-
-package com.sbi.epay.encryptdecrypt.service;
-
-import com.sbi.epay.encryptdecrypt.constant.EncryptionDecryptionConstants;
-import com.sbi.epay.encryptdecrypt.exception.EncryptionDecryptionException;
-import com.sbi.epay.encryptdecrypt.util.enums.EncryptionDecryptionAlgo;
-import com.sbi.epay.encryptdecrypt.util.enums.GCMIvLength;
-import com.sbi.epay.encryptdecrypt.util.enums.GCMTagLength;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.junit.jupiter.MockitoExtension;
-
-import javax.crypto.SecretKey;
-import javax.crypto.spec.SecretKeySpec;
-import java.util.Base64;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-@ExtendWith(MockitoExtension.class)
-class DecryptionServiceTest {
-
-    private static final String SAMPLE_KEY = "0123456789abcdef"; // Example 128-bit key
-    private static final String SAMPLE_ENCRYPTED_VALUE = "encryptedText"; // Example encrypted text
-
-    private SecretKey secretKey;
-
-    @BeforeEach
-    void setUp() {
-        byte[] decodedKey = Base64.getDecoder().decode(Base64.getEncoder().encodeToString(SAMPLE_KEY.getBytes()));
-        secretKey = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+public static SecretKey decodedValue(String key) {
+        log.debug("DecryptionService :: decodedSecretKey key {}", key);
+        byte[] decodedKey = Base64.getDecoder().decode(key);
+        return new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
     }
 
-    @Test
-    void testDecryptValueByStringKey_ShouldThrowException() {
-        assertThrows(EncryptionDecryptionException.class, () ->
-                DecryptionService.decryptValueByStringKey(SAMPLE_KEY, SAMPLE_ENCRYPTED_VALUE, 
-                        EncryptionDecryptionAlgo.AES_GCM_NOPADDING, GCMIvLength.BIT_96, GCMTagLength.BIT_128)
-        );
-    }
+    public static String decryptValue(SecretKey key, String value, EncryptionDecryptionAlgo algorithm, GCMIvLength gcmIvLength, GCMTagLength gcmTagLength) throws NoSuchAlgorithmException, NoSuchPaddingException, InvalidKeyException, InvalidAlgorithmParameterException, IllegalBlockSizeException, BadPaddingException {
+        log.debug("DecryptionService :: decryptKeK key {}, value {}, algorithm {}, gcmIvLength {}, gcmTagLength {}", key, value, algorithm, gcmIvLength, gcmTagLength);
 
-    @Test
-    void testDecryptValueBySecretKey_ShouldThrowException() {
-        assertThrows(EncryptionDecryptionException.class, () ->
-                DecryptionService.decryptValueBySecretKey(secretKey, SAMPLE_ENCRYPTED_VALUE, 
-                        EncryptionDecryptionAlgo.AES_GCM_NOPADDING, GCMIvLength.BIT_96, GCMTagLength.BIT_128)
-        );
+        byte[] decodedData = Base64.getDecoder().decode(value);
+
+        // Dynamically determine IV length based on the provided parameter
+        int ivLength = gcmIvLength.getLengthInBytes();
+
+        // Extract the IV and ciphertext
+        byte[] iv = new byte[ivLength];
+        byte[] ciphertext = new byte[decodedData.length - ivLength];
+        System.arraycopy(decodedData, 0, iv, 0, ivLength);
+        System.arraycopy(decodedData, ivLength, ciphertext, 0, decodedData.length - ivLength);
+
+        // Initialize the Cipher in Decrypt Mode
+        Cipher cipher = Cipher.getInstance(algorithm.getName());
+        GCMParameterSpec gcmSpec = new GCMParameterSpec(gcmTagLength.getLengthInBits(), iv);
+        cipher.init(Cipher.DECRYPT_MODE, key, gcmSpec);
+
+        // Decrypt the ciphertext
+        byte[] plainText = cipher.doFinal(ciphertext);
+
+        // Return the plaintext as a string
+        return new String(plainText, StandardCharsets.UTF_8);
     }
-}
