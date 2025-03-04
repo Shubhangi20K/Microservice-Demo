@@ -1,161 +1,74 @@
-package com.sbi.epay.authentication.service;
+package com.sbi.epay.encryptdecrypt.service;
 
-import com.sbi.epay.authentication.exception.EPaySecurityException;
-import com.sbi.epay.authentication.model.AccessTokenRequest;
-import com.sbi.epay.authentication.model.EPayPrincipal;
-import com.sbi.epay.authentication.model.TransactionTokenRequest;
-import com.sbi.epay.authentication.model.UserTokenRequest;
-import com.sbi.epay.authentication.util.EPayAuthenticationConstant;
-import com.sbi.epay.authentication.util.EPayAuthenticationErrorConstants;
+
+import com.sbi.epay.encryptdecrypt.constant.EncryptionDecryptionConstants;
+import com.sbi.epay.encryptdecrypt.exception.EncryptionDecryptionException;
+import com.sbi.epay.encryptdecrypt.util.enums.EncryptionDecryptionAlgo;
+import com.sbi.epay.encryptdecrypt.util.enums.GCMIvLength;
+import com.sbi.epay.encryptdecrypt.util.enums.GCMTagLength;
 import com.sbi.epay.logging.utility.LoggerFactoryUtility;
 import com.sbi.epay.logging.utility.LoggerUtility;
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.io.Decoders;
-import io.jsonwebtoken.security.Keys;
-import io.jsonwebtoken.security.SignatureException;
-import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+import jdk.jfr.Description;
+import lombok.NonNull;
 
-import java.security.Key;
-import java.text.MessageFormat;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
+import javax.crypto.*;
+import javax.crypto.spec.GCMParameterSpec;
+import javax.crypto.spec.SecretKeySpec;
+import java.nio.charset.StandardCharsets;
+import java.security.InvalidAlgorithmParameterException;
+import java.security.InvalidKeyException;
+import java.security.NoSuchAlgorithmException;
+import java.util.Base64;
 
-import static com.sbi.epay.authentication.util.EPayJwtClaimsSet.*;
 
 /**
- * Class Name: JwtService
+ * Class Name: DecryptionService
  * *
- * Description: Service Class for generating and validating JSON Web Tokens (JWT).
- * * This class provides methods to create signed JWTs using various inputs, including username/pwd, API keys, and hashed values.
+ * Description:This class will be used for  decryption using AES-GSM-NOPADDING algorithm
  * *
- * Author: V1018217(Nirvay K. Bikram)
+ * Author: V1018212(Hrishikesh Pandirakar)
  * Copyright (c) 2024 [State Bank of India]
  * All rights reserved
  * *
  * Version:1.0
  */
-@Component
-@RequiredArgsConstructor
-public class JwtService {
-    private static final LoggerUtility logger = LoggerFactoryUtility.getLogger(JwtService.class);
-
-    private final AuthenticationUserService authenticationUserService;
-    @Value("${security.jwt.secret.key}")
-    private String secretKey;
-    @Value("${security.jwt.secret.issuer}")
-    private String issuer;
+@Description("This class will be used for  decryption using AES-GSM-NOPADDING algorithm")
+public class DecryptionService {
+    private static final LoggerUtility log = LoggerFactoryUtility.getLogger(DecryptionService.class);
 
     /**
-     * Generates a JWT token with the specified claims, username, and expiration time.
+     * This method will be used for decryption of Keys .
      *
-     * @param claims         A map of claims to include in the token.
-     * @param userName       The username used to sign the token.
-     * @param expirationTime The expiration time of the token in milliseconds.
-     * @return A signed JWT token as a string.
+     * @param key          the SecretKey by which we want use for decrypt the given text
+     * @param value        String which we want to decrypt
+     * @param algorithm    EncryptionDecryptionAlgo algorithm
+     * @param gcmIvLength  algorithm iv length
+     * @param gcmTagLength algorithm tag length
+     * @return the String of original encoded KEK
      */
-    private String generateToken(Map<String, Object> claims, String userName, long expirationTime) {
-        logger.info("ClassName - JwtService,MethodName - generateToken,generate a JWT token  with the specified claims, username, and expiration time.");
-        Claims jwtClaims = Jwts.claims(claims);
-        jwtClaims.setSubject(userName);
-        jwtClaims.setIssuer(issuer);
-        jwtClaims.setIssuedAt(new Date(System.currentTimeMillis()));
-        jwtClaims.setExpiration(new Date(expirationTime));
-        return Jwts.builder().setClaims(jwtClaims).signWith(getSignKey(), SignatureAlgorithm.HS512).compact();
-    }
-_________
-
-
-package com.sbi.epay.authentication.service;
-
-import com.sbi.epay.authentication.exception.EPaySecurityException;
-import com.sbi.epay.authentication.model.EPayPrincipal;
-import com.sbi.epay.authentication.util.EPayAuthenticationErrorConstants;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.core.userdetails.UserDetailsService;
-
-import java.util.Optional;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-@ExtendWith(MockitoExtension.class)
-class AuthenticationUserDetailsServiceTest {
-
-    @Mock
-    private AuthenticationUserService userService;
-
-    @InjectMocks
-    private AuthenticationUserDetailsService authenticationUserDetailsService;
-
-    private static final String TEST_USERNAME = "testUser";
-
-    @BeforeEach
-    void setUp() {
-        // No need to manually instantiate authenticationUserDetailsService since @InjectMocks handles it.
+    public static String decryptValueByStringKey(String key, String value, @NonNull EncryptionDecryptionAlgo algorithm, @NonNull GCMIvLength gcmIvLength, @NonNull GCMTagLength gcmTagLength) throws EncryptionDecryptionException {
+        log.info("Decryption Service ::  key : {}, value : {}, algorithm : {}, gcmIvLength : {}, gcmTagLength : {}", key, value, algorithm, gcmIvLength, gcmTagLength);
+        return decryptValueBySecretKey(decodedValue(key), value, algorithm, gcmIvLength, gcmTagLength);
     }
 
-    @Test
-    void testUserDetailsService_Initialization() {
-        // Act
-        UserDetailsService userDetailsService = authenticationUserDetailsService.userDetailsService();
-
-        // Assert
-        assertNotNull(userDetailsService, "UserDetailsService should be initialized");
+    /**
+     * This method will be used for decryption of Value .
+     *
+     * @param value        String which we want to decrypt
+     * @param key          the SecretKey by which we want use for decrypt the given text
+     * @param algorithm    EncryptionDecryptionAlgo algorithm
+     * @param gcmIvLength  algorithm iv length
+     * @param gcmTagLength algorithm tag length
+     * @return the String of original encoded KEK
+     */
+    public static String decryptValueBySecretKey(@NonNull SecretKey key, @NonNull String value, @NonNull EncryptionDecryptionAlgo algorithm, @NonNull GCMIvLength gcmIvLength, @NonNull GCMTagLength gcmTagLength) throws EncryptionDecryptionException {
+        log.info("Decryption Service ::  key : {}, value : {}, algorithm : {}, gcmIvLength : {}, gcmTagLength : {}", key, value, algorithm, gcmIvLength, gcmTagLength);
+        try {
+            return decryptValue(key, value, algorithm, gcmIvLength, gcmTagLength);
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException | InvalidKeyException |
+                 InvalidAlgorithmParameterException | IllegalArgumentException | UnsupportedOperationException |
+                 IllegalStateException | IllegalBlockSizeException | BadPaddingException e) {
+            log.error("DecryptionService :: decrypt {}", e);
+            throw new EncryptionDecryptionException(EncryptionDecryptionConstants.GENERIC_ERROR_CODE, EncryptionDecryptionConstants.GENERIC_ERROR_MESSAGE);
+        }
     }
-
-    @Test
-    void testUserDetailsService_UserFound() {
-        // Arrange
-        EPayPrincipal mockPrincipal = mock(EPayPrincipal.class);
-        when(userService.loadUserByUserName(TEST_USERNAME)).thenReturn(Optional.of(mockPrincipal));
-
-        UserDetailsService userDetailsService = authenticationUserDetailsService.userDetailsService();
-
-        // Act
-        UserDetails userDetails = userDetailsService.loadUserByUsername(TEST_USERNAME);
-
-        // Assert
-        assertNotNull(userDetails, "UserDetails should not be null");
-        assertEquals(mockPrincipal, userDetails, "Returned user details should match");
-        verify(userService, times(1)).loadUserByUserName(TEST_USERNAME);
-    }
-
-    @Test
-    void testUserDetailsService_UserNotFound() {
-        // Arrange
-        when(userService.loadUserByUserName(TEST_USERNAME)).thenReturn(Optional.empty());
-
-        UserDetailsService userDetailsService = authenticationUserDetailsService.userDetailsService();
-
-        // Act & Assert
-        EPaySecurityException exception = assertThrows(EPaySecurityException.class, () -> {
-            userDetailsService.loadUserByUsername(TEST_USERNAME);
-        });
-
-        assertEquals(EPayAuthenticationErrorConstants.NOT_FOUND_ERROR_CODE, exception.getErrorCode(), "Error code should match");
-        assertTrue(exception.getMessage().contains(EPayAuthenticationErrorConstants.NOT_FOUND_ERROR_MESSAGE), "Exception message should match");
-        verify(userService, times(1)).loadUserByUserName(TEST_USERNAME);
-    }
-
-    @Test
-    void testUserDetailsService_NullOrEmptyUsername() {
-        // Arrange
-        UserDetailsService userDetailsService = authenticationUserDetailsService.userDetailsService();
-
-        // Act & Assert
-        assertThrows(IllegalArgumentException.class, () -> userDetailsService.loadUserByUsername(null), "Null username should throw IllegalArgumentException");
-        assertThrows(IllegalArgumentException.class, () -> userDetailsService.loadUserByUsername(""), "Empty username should throw IllegalArgumentException");
-    }
-}
