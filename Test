@@ -1,1 +1,65 @@
-\
+
+package com.sbi.epay.encryptdecrypt.service;
+
+import com.sbi.epay.encryptdecrypt.exception.EncryptionDecryptionException;
+import com.sbi.epay.encryptdecrypt.util.enums.EncryptionDecryptionAlgo;
+import com.sbi.epay.encryptdecrypt.util.enums.GCMIvLength;
+import com.sbi.epay.encryptdecrypt.util.enums.GCMTagLength;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
+import static org.junit.jupiter.api.Assertions.*;
+
+class EncryptionServiceTest {
+
+    private static final String SECRET_KEY = "0123456789abcdef"; // Sample 16-byte key
+    private static final String PLAINTEXT = "TestMessage";
+    private SecretKey secretKey;
+
+    @BeforeEach
+    void setUp() {
+        byte[] decodedKey = SECRET_KEY.getBytes();
+        secretKey = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+    }
+
+    @Test
+    void testDecodedValue() {
+        String encodedKey = Base64.getEncoder().encodeToString(secretKey.getEncoded());
+        SecretKey decodedKey = EncryptionService.decodedValue(encodedKey);
+        assertArrayEquals(secretKey.getEncoded(), decodedKey.getEncoded(), "Decoded key should match the original key");
+    }
+
+    @Test
+    void testEncryptValueBySecretKey() {
+        assertDoesNotThrow(() -> {
+            String encryptedText = EncryptionService.encryptValueBySecretKey(
+                    secretKey, PLAINTEXT, EncryptionDecryptionAlgo.AES_GCM_NOPADDING, 
+                    GCMIvLength.BYTES_12, GCMTagLength.BITS_128);
+            assertNotNull(encryptedText, "Encrypted text should not be null");
+        });
+    }
+
+    @Test
+    void testEncryptValueByStringKey() {
+        assertDoesNotThrow(() -> {
+            String encodedKey = Base64.getEncoder().encodeToString(secretKey.getEncoded());
+            String encryptedText = EncryptionService.encryptValueByStringKey(
+                    encodedKey, PLAINTEXT, EncryptionDecryptionAlgo.AES_GCM_NOPADDING, 
+                    GCMIvLength.BYTES_12, GCMTagLength.BITS_128);
+            assertNotNull(encryptedText, "Encrypted text should not be null");
+        });
+    }
+
+    @Test
+    void testEncryptValueBySecretKey_InvalidKey() {
+        SecretKey invalidKey = new SecretKeySpec(new byte[8], "AES"); // Invalid key size
+        EncryptionDecryptionException exception = assertThrows(EncryptionDecryptionException.class, () -> {
+            EncryptionService.encryptValueBySecretKey(
+                    invalidKey, PLAINTEXT, EncryptionDecryptionAlgo.AES_GCM_NOPADDING, 
+                    GCMIvLength.BYTES_12, GCMTagLength.BITS_128);
+        });
+        assertNotNull(exception, "Exception should be thrown for invalid key");
+    }
+}
