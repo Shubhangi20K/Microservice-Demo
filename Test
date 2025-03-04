@@ -1,1 +1,64 @@
 
+package com.sbi.epay.encryptdecrypt.service;
+
+import com.sbi.epay.encryptdecrypt.exception.EncryptionDecryptionException;
+import com.sbi.epay.encryptdecrypt.util.enums.EncryptionDecryptionAlgo;
+import com.sbi.epay.encryptdecrypt.util.enums.GCMIvLength;
+import com.sbi.epay.encryptdecrypt.util.enums.GCMTagLength;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+@ExtendWith(MockitoExtension.class)
+class DecryptionServiceTest {
+
+    private String encodedKey;
+    private String encryptedValue;
+    private SecretKey secretKey;
+    
+    @BeforeEach
+    void setUp() {
+        encodedKey = "c29tZXNlY3JldGtleQ=="; // Base64-encoded example key
+        encryptedValue = "c29tZWVuY3J5cHRlZGRhdGE="; // Example Base64-encoded encrypted value
+        
+        // Decoding the key for testing
+        byte[] decodedKey = Base64.getDecoder().decode(encodedKey);
+        secretKey = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+    }
+
+    @Test
+    void testDecodedValue() {
+        SecretKey result = DecryptionService.decodedValue(encodedKey);
+        assertNotNull(result);
+        assertEquals(secretKey.getAlgorithm(), result.getAlgorithm());
+    }
+
+    @Test
+    void testDecryptValueByStringKey_ShouldThrowException_WhenInvalidKey() {
+        EncryptionDecryptionAlgo algorithm = EncryptionDecryptionAlgo.AES_GCM_NOPADDING;
+        GCMIvLength gcmIvLength = GCMIvLength.BITS_96;
+        GCMTagLength gcmTagLength = GCMTagLength.BITS_128;
+
+        assertThrows(EncryptionDecryptionException.class, () -> 
+            DecryptionService.decryptValueByStringKey("invalidKey", encryptedValue, algorithm, gcmIvLength, gcmTagLength)
+        );
+    }
+
+    @Test
+    void testDecryptValueBySecretKey_ShouldThrowException_WhenInvalidData() {
+        EncryptionDecryptionAlgo algorithm = EncryptionDecryptionAlgo.AES_GCM_NOPADDING;
+        GCMIvLength gcmIvLength = GCMIvLength.BITS_96;
+        GCMTagLength gcmTagLength = GCMTagLength.BITS_128;
+
+        assertThrows(EncryptionDecryptionException.class, () -> 
+            DecryptionService.decryptValueBySecretKey(secretKey, "invalidData", algorithm, gcmIvLength, gcmTagLength)
+        );
+    }
+}
