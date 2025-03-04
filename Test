@@ -1,1 +1,71 @@
 
+package com.sbi.epay.encryptdecrypt.service;
+
+import com.sbi.epay.encryptdecrypt.constant.EncryptionDecryptionConstants;
+import com.sbi.epay.encryptdecrypt.exception.EncryptionDecryptionException;
+import com.sbi.epay.encryptdecrypt.util.enums.HashAlgorithm;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
+
+import java.nio.charset.StandardCharsets;
+import java.security.NoSuchAlgorithmException;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+class HashingServiceTest {
+
+    @Test
+    void testGenerateHashSuccess() throws EncryptionDecryptionException {
+        // Given
+        String input = "TestData";
+        byte[] inputData = input.getBytes(StandardCharsets.UTF_8);
+        HashAlgorithm algorithm = HashAlgorithm.SHA_256;
+
+        // When
+        byte[] hashedData = HashingService.generateHash(inputData, algorithm);
+
+        // Then
+        assertNotNull(hashedData);
+        assertTrue(hashedData.length > 0);
+    }
+
+    @Test
+    void testGenerateHashWithInvalidAlgorithmThrowsException() {
+        // Given
+        String input = "TestData";
+        byte[] inputData = input.getBytes(StandardCharsets.UTF_8);
+
+        // Mock an invalid algorithm (assuming HashAlgorithm supports an invalid option for testing)
+        HashAlgorithm invalidAlgorithm = mock(HashAlgorithm.class);
+        when(invalidAlgorithm.getAlgorithmName()).thenReturn("INVALID_ALGO");
+
+        // When
+        EncryptionDecryptionException exception = assertThrows(
+                EncryptionDecryptionException.class,
+                () -> HashingService.generateHash(inputData, invalidAlgorithm)
+        );
+
+        // Then
+        assertEquals(EncryptionDecryptionConstants.INVALID_ERROR_CODE, exception.getErrorCode());
+        assertTrue(exception.getMessage().contains("hash algorithm"));
+    }
+
+    @Test
+    void testGenerateHashWithNullDataThrowsException() {
+        // Given
+        HashAlgorithm algorithm = HashAlgorithm.SHA_256;
+
+        // When & Then
+        assertThrows(NullPointerException.class, () -> HashingService.generateHash(null, algorithm));
+    }
+
+    @Test
+    void testGenerateHashWithNullAlgorithmThrowsException() {
+        // Given
+        byte[] inputData = "TestData".getBytes(StandardCharsets.UTF_8);
+
+        // When & Then
+        assertThrows(NullPointerException.class, () -> HashingService.generateHash(inputData, null));
+    }
+}
