@@ -68,4 +68,94 @@ public class JwtService {
         jwtClaims.setExpiration(new Date(expirationTime));
         return Jwts.builder().setClaims(jwtClaims).signWith(getSignKey(), SignatureAlgorithm.HS512).compact();
     }
+_________
 
+
+package com.sbi.epay.authentication.service;
+
+import com.sbi.epay.authentication.exception.EPaySecurityException;
+import com.sbi.epay.authentication.model.EPayPrincipal;
+import com.sbi.epay.authentication.util.EPayAuthenticationErrorConstants;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.core.userdetails.UserDetailsService;
+
+import java.util.Optional;
+
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class AuthenticationUserDetailsServiceTest {
+
+    @Mock
+    private AuthenticationUserService userService;
+
+    @InjectMocks
+    private AuthenticationUserDetailsService authenticationUserDetailsService;
+
+    private static final String TEST_USERNAME = "testUser";
+
+    @BeforeEach
+    void setUp() {
+        // No need to manually instantiate authenticationUserDetailsService since @InjectMocks handles it.
+    }
+
+    @Test
+    void testUserDetailsService_Initialization() {
+        // Act
+        UserDetailsService userDetailsService = authenticationUserDetailsService.userDetailsService();
+
+        // Assert
+        assertNotNull(userDetailsService, "UserDetailsService should be initialized");
+    }
+
+    @Test
+    void testUserDetailsService_UserFound() {
+        // Arrange
+        EPayPrincipal mockPrincipal = mock(EPayPrincipal.class);
+        when(userService.loadUserByUserName(TEST_USERNAME)).thenReturn(Optional.of(mockPrincipal));
+
+        UserDetailsService userDetailsService = authenticationUserDetailsService.userDetailsService();
+
+        // Act
+        UserDetails userDetails = userDetailsService.loadUserByUsername(TEST_USERNAME);
+
+        // Assert
+        assertNotNull(userDetails, "UserDetails should not be null");
+        assertEquals(mockPrincipal, userDetails, "Returned user details should match");
+        verify(userService, times(1)).loadUserByUserName(TEST_USERNAME);
+    }
+
+    @Test
+    void testUserDetailsService_UserNotFound() {
+        // Arrange
+        when(userService.loadUserByUserName(TEST_USERNAME)).thenReturn(Optional.empty());
+
+        UserDetailsService userDetailsService = authenticationUserDetailsService.userDetailsService();
+
+        // Act & Assert
+        EPaySecurityException exception = assertThrows(EPaySecurityException.class, () -> {
+            userDetailsService.loadUserByUsername(TEST_USERNAME);
+        });
+
+        assertEquals(EPayAuthenticationErrorConstants.NOT_FOUND_ERROR_CODE, exception.getErrorCode(), "Error code should match");
+        assertTrue(exception.getMessage().contains(EPayAuthenticationErrorConstants.NOT_FOUND_ERROR_MESSAGE), "Exception message should match");
+        verify(userService, times(1)).loadUserByUserName(TEST_USERNAME);
+    }
+
+    @Test
+    void testUserDetailsService_NullOrEmptyUsername() {
+        // Arrange
+        UserDetailsService userDetailsService = authenticationUserDetailsService.userDetailsService();
+
+        // Act & Assert
+        assertThrows(IllegalArgumentException.class, () -> userDetailsService.loadUserByUsername(null), "Null username should throw IllegalArgumentException");
+        assertThrows(IllegalArgumentException.class, () -> userDetailsService.loadUserByUsername(""), "Empty username should throw IllegalArgumentException");
+    }
+}
