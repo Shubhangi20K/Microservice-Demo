@@ -103,3 +103,60 @@ public static SecretKey decodedValue(String key) {
         // Return the plaintext as a string
         return new String(plainText, StandardCharsets.UTF_8);
     }
+
+___________
+
+package com.sbi.epay.encryptdecrypt.service;
+
+import com.sbi.epay.encryptdecrypt.exception.EncryptionDecryptionException;
+import com.sbi.epay.encryptdecrypt.util.enums.EncryptionDecryptionAlgo;
+import com.sbi.epay.encryptdecrypt.util.enums.GCMIvLength;
+import com.sbi.epay.encryptdecrypt.util.enums.GCMTagLength;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.util.Base64;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+@ExtendWith(MockitoExtension.class)
+class DecryptionServiceTest {
+
+    private static final String SAMPLE_KEY = "0123456789abcdef0123456789abcdef"; // 256-bit example key (Base64 encoded)
+    private static final String SAMPLE_ENCRYPTED_VALUE = "QWxhZGRpbjpPcGVuU2VzYW1l"; // Placeholder encrypted value
+
+    private SecretKey secretKey;
+
+    @BeforeEach
+    void setUp() {
+        byte[] decodedKey = Base64.getDecoder().decode(SAMPLE_KEY);
+        secretKey = new SecretKeySpec(decodedKey, 0, decodedKey.length, "AES");
+    }
+
+    @Test
+    void testDecodedValue_ShouldReturnSecretKey() {
+        SecretKey key = DecryptionService.decodedValue(SAMPLE_KEY);
+        assertNotNull(key);
+        assertEquals("AES", key.getAlgorithm());
+    }
+
+    @Test
+    void testDecryptValueByStringKey_ShouldThrowException() {
+        assertThrows(EncryptionDecryptionException.class, () ->
+                DecryptionService.decryptValueByStringKey(SAMPLE_KEY, SAMPLE_ENCRYPTED_VALUE,
+                        EncryptionDecryptionAlgo.AES_GCM_NOPADDING, GCMIvLength.BIT_96, GCMTagLength.BIT_128)
+        );
+    }
+
+    @Test
+    void testDecryptValueBySecretKey_ShouldThrowException() {
+        assertThrows(EncryptionDecryptionException.class, () ->
+                DecryptionService.decryptValueBySecretKey(secretKey, SAMPLE_ENCRYPTED_VALUE,
+                        EncryptionDecryptionAlgo.AES_GCM_NOPADDING, GCMIvLength.BIT_96, GCMTagLength.BIT_128)
+        );
+    }
+}
