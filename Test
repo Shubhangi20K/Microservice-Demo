@@ -1,25 +1,16 @@
-/**
- * Copyright (c) [2024] [State Bank of India]
- * All rights reserved.
- * <p>
- * Author: @V0000001 (Shilpa Kothre)
- * Version: 1.0
- */
-
 package com.epay.transaction.dao;
 
-import com.epay.transaction.dto.MerchantOrderDto;
-import com.epay.transaction.dto.TokenDto;
-import com.epay.transaction.dto.booking.DeviceDetailsDto;
-import com.epay.transaction.entity.Token;
 import com.epay.transaction.exceptions.TransactionException;
-import com.epay.transaction.externalservice.response.admin.MerchantInfoResponse;
-import com.epay.transaction.mapper.TokenMapper;
-import com.epay.transaction.repository.TokenRepository;
-import com.epay.transaction.repository.TransactionDeviceInfoRepository;
+import com.epay.transaction.exceptions.ValidationException;
+import com.epay.transaction.externalservice.AdminServicesClient;
+import com.epay.transaction.externalservice.request.admin.BinCheckRequest;
+import com.epay.transaction.externalservice.request.admin.CurrencyRequest;
+import com.epay.transaction.externalservice.request.admin.MerchantPricingRequest;
+import com.epay.transaction.externalservice.response.admin.*;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.util.TransactionConstant;
 import com.epay.transaction.util.TransactionErrorConstants;
-import com.epay.transaction.util.enums.TokenStatus;
-import com.sbi.epay.authentication.util.enums.TokenType;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.sbi.epay.logging.utility.LoggerFactoryUtility;
 import com.sbi.epay.logging.utility.LoggerUtility;
 import lombok.RequiredArgsConstructor;
@@ -29,183 +20,156 @@ import org.springframework.stereotype.Component;
 
 import java.text.MessageFormat;
 import java.util.List;
-import java.util.Optional;
+import java.util.Map;
 
 @Component
 @RequiredArgsConstructor
-public class TokenDao {
-
+public class AdminDao {
     private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
-    private final TokenRepository tokenRepository;
-    private final TransactionDeviceInfoRepository transactionDeviceInfoRepository;
-    private final TokenMapper tokenMapper;
-    private final KmsDao kmsDao;
-    private final AdminDao adminDao;
-    private final MerchantOrderDao merchantOrderDao;
+    private final AdminServicesClient adminServicesClient;
 
     /**
-     * Saves a token in the database.
+     * Getting Merchant Information Using mId
      *
-     * @param tokenDto DTO containing token details.
-     */
-    public void saveToken(TokenDto tokenDto) {
-        logger.info("Saving token with details: {}", tokenDto);
-        Token token = tokenMapper.dtoToEntity(tokenDto);
-        tokenRepository.save(token);
-        logger.debug("Token saved successfully.");
-    }
-
-    /**
-     * Retrieves Merchant ID using API key ID and secret.
-     *
-     * @param merchantApiKeyId     API key ID of the merchant.
-     * @param merchantApiKeySecret API key secret of the merchant.
-     * @return Merchant ID.
-     */
-    public String getMIdByKeyIdAndSecret(String merchantApiKeyId, String merchantApiKeySecret) {
-        logger.debug("Fetching Merchant ID using API key.");
-        return kmsDao.getMIdByKeyIdAndSecret(merchantApiKeyId, merchantApiKeySecret);
-    }
-
-    /**
-     * Retrieves merchant details by Merchant ID.
-     *
-     * @param mId Merchant ID.
-     * @return Merchant information response.
+     * @param mId String
+     * @return MerchantInfoResponse
      */
     public MerchantInfoResponse getMerchantByMId(String mId) {
-        logger.debug("Fetching merchant details for MID: {}", mId);
-        return adminDao.getMerchantByMId(mId);
+        TransactionResponse<MerchantInfoResponse> response = adminServicesClient.getMerchantInfoByMId(mId);
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            return response.getData().getFirst();
+        }
+        logger.error("Error in getMerchantByMId {}", response.getErrors());
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MId"));
     }
 
     /**
-     * Retrieves active merchant order details using the order hash.
+     * Validates if the given currency code is valid for the merchant.
      *
-     * @param orderHash Order hash.
-     * @return Merchant order details.
+     * @param mId          Merchant ID
+     * @param currencyCode Currency Code
+     * @return true if valid, false otherwise
      */
-    public MerchantOrderDto getMerchantOrderByOrderHash(String orderHash) {
-        logger.debug("Fetching merchant order for order hash: {}", orderHash);
-        return merchantOrderDao.getActiveOrderByOrderHash(orderHash);
+    public boolean isValidCurrencyCode(String mId, String currencyCode) {
+        CurrencyRequest currencyRequest = CurrencyRequest.builder().mId(mId).currencyCode(currencyCode).build();
+        TransactionResponse<?> response = adminServicesClient.getCurrencyValidate(currencyRequest);
+        return TransactionConstant.RESPONSE_SUCCESS == response.getStatus();
     }
 
     /**
-     * Checks if a merchant exists using the Merchant ID.
+     * Fetches RFC details for a given merchant.
      *
-     * @param mId Merchant ID.
-     * @return true if merchant exists, false otherwise.
+     * @param mId Merchant ID
+     * @return MerchantRfcDetailsResponse
      */
-    public boolean isMerchantExistByMid(String mId) {
-        logger.debug("Checking if merchant exists for MID: {}", mId);
-        return ObjectUtils.isNotEmpty(adminDao.getMerchantByMId(mId));
+    public MerchantRfcDetailsResponse getMerchantRFCDetails(String mId) {
+        TransactionResponse<MerchantRfcDetailsResponse> response = adminServicesClient.getMerchantRFCInfo(mId);
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            return response.getData().getFirst();
+        }
+        logger.error("Error in getMerchantRFCDetails {}", response.getErrors());
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MerchantRFCDetails"));
     }
 
     /**
-     * Invalidates an active token.
+     * Retrieves multiple account details for a given merchant.
      *
-     * @param requestedToken Token to be invalidated.
+     * @param mId Merchant ID
+     * @return Map containing account details
      */
-    public void invalidateToken(String requestedToken) {
-        logger.info("Invalidating token: {}", requestedToken);
-        Token token = tokenRepository.findByGeneratedTokenAndStatusAndIsTokenValid(requestedToken, TokenStatus.ACTIVE, true)
-                .orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE,
-                        MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, TransactionErrorConstants.ACTIVE_TOKEN)));
-        markTokenInActive(token);
-        tokenRepository.save(token);
-        logger.debug("Token invalidated successfully.");
+    public Map<String, List<String>> getMerchantMultiAccount(String mId) {
+        TransactionResponse<Map<String, List<String>>> response = adminServicesClient.getMultiAccountDetailsApi(mId);
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            return response.getData().getFirst();
+        }
+        logger.error("Error in getMerchantMultiAccount {}", response.getErrors());
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MerchantRFCDetails"));
     }
 
     /**
-     * Retrieves an active access token by Merchant ID.
+     * Fetches available payment modes for a given merchant.
      *
-     * @param mId Merchant ID.
-     * @return Optional containing TokenDto if found.
+     * @param mId Merchant ID
+     * @return JsonNode containing payment modes
      */
-    public Optional<TokenDto> getActiveAccessTokenByMId(String mId) {
-        logger.debug("Finding active ACCESS token for MID: {}", mId);
-        Optional<Token> token = tokenRepository.findLatestValidToken(mId, System.currentTimeMillis());
-        logger.debug("ACCESS token found: {}", token);
-        return token.map(tokenMapper::entityToDto);
+    public JsonNode getMerchantPayModes(String mId) {
+        TransactionResponse<JsonNode> response = adminServicesClient.getMerchantPayModeInfo(mId);
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            return response.getData().getFirst().get("paymodes");
+        }
+        logger.error("Error in getMerchantPayModes {}", response.getErrors());
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MerchantRFCDetails"));
     }
 
     /**
-     * Validates a token based on order hash.
+     * Retrieves Merchant Volume Velocity (VVL) details.
      *
-     * @param orderHash Order hash.
+     * @param mId Merchant ID
+     * @return List of MerchantVolumeVelocityResponse
      */
-    public void validatedTokenByOrderHash(String orderHash) {
-        logger.debug("Validating token for order hash: {}", orderHash);
-        Optional<Token> token = tokenRepository.findByOrderHash(orderHash);
-        if (token.isPresent()) {
-            if (TokenStatus.INACTIVE.equals(token.get().getStatus())) {
-                throw new TransactionException(TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_CODE, TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_MESSAGE);
+    public List<MerchantVolumeVelocityResponse> getMerchantVVLDetails(String mId) {
+        TransactionResponse<MerchantVolumeVelocityResponse> response = adminServicesClient.geVvlDetails(mId);
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            return response.getData();
+        }
+        logger.error("Error in getMerchantVVLDetails {}", response.getErrors());
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MerchantVVLDetails"));
+    }
+
+    /**
+     * Fetches Gateway Configuration Details for a given merchant and gateway mapping ID.
+     *
+     * @param mId          Merchant ID
+     * @param gateWayMapId Gateway Mapping ID
+     * @return GatewayConfigDetailsResponse
+     */
+    public GatewayConfigDetailsResponse getGatewayConfigDetails(String mId, String gateWayMapId) {
+        TransactionResponse<GatewayConfigDetailsResponse> response = adminServicesClient.getGatewayConfigDetails(mId, gateWayMapId);
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            return response.getData().getFirst();
+        }
+        logger.error("Error in getGatewayConfigDetails {}", response.getErrors());
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "GatewayConfigDetails"));
+    }
+
+    /**
+     * Retrieves the valid merchant pricing structure.
+     *
+     * @param merchantPricingRequest MerchantPricingRequest object
+     * @return MerchantPricingResponse
+     */
+    public MerchantPricingResponse getValidMerchantPricingStructure(MerchantPricingRequest merchantPricingRequest) {
+        TransactionResponse<MerchantPricingResponse> response = adminServicesClient.getMerchantPricingStructure(merchantPricingRequest);
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            MerchantPricingResponse merchantPricingResponse = response.getData().getFirst();
+            if (ObjectUtils.isEmpty(merchantPricingResponse.getFeeProcessingFlag()) || !merchantPricingResponse.getFeeProcessingFlag().equals(TransactionConstant.TRANSACTION_PROCESSING_FLAG_HYBRID)) {
+                logger.info("Processing flag validation failed for MerchantPricingResponse: {}", merchantPricingResponse);
+                throw new ValidationException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Hybrid transaction processing flag"));
             }
-            throw new TransactionException(TransactionErrorConstants.ALREADY_EXIST_ERROR_CODE,
-                    MessageFormat.format(TransactionErrorConstants.ALREADY_EXIST_ERROR_MESSAGE, "Transaction Booking"));
+            if (ObjectUtils.isEmpty(merchantPricingResponse.getBearableComponent()) || !(merchantPricingResponse.getBearableComponent().equalsIgnoreCase(TransactionConstant.BEARABLE_COMPONENT_FEE) || merchantPricingResponse.getBearableComponent().equalsIgnoreCase(TransactionConstant.BEARABLE_COMPONENT_AMOUNT))) {
+                logger.info("Bearable component validation failed for MerchantPricingResponse: {}", merchantPricingResponse);
+                throw new ValidationException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Valid bearable compound"));
+            }
+            return merchantPricingResponse;
         }
+        logger.error("Error in getMerchantPricingStructure {}", response.getErrors());
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Merchant Pricing information"));
     }
 
     /**
-     * Retrieves the AES encryption key for a given token.
+     * Retrieves BIN check response for a given BIN check request.
      *
-     * @param generatedToken Token value.
-     * @return AES encryption key.
+     * @param binCheckRequest BinCheckRequest object
+     * @return BinCheckResponse
      */
-    public String getEncryptionAESKey(String generatedToken) {
-        logger.debug("Fetching AES key for token: {}", generatedToken);
-        Token token = tokenRepository.findByGeneratedTokenAndStatus(generatedToken, TokenStatus.ACTIVE)
-                .orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE,
-                        MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Encryption Key")));
-        return token.getAesKey();
-    }
+    public BinCheckResponse getBinCheckResponse(BinCheckRequest binCheckRequest) {
+        TransactionResponse<BinCheckResponse> response = adminServicesClient.binCheckRequest(binCheckRequest);
 
-    /**
-     * Saves transaction device information.
-     *
-     * @param deviceDetailsDto DTO containing device details.
-     */
-    public void saveTransactionRequestedDeviceInfo(DeviceDetailsDto deviceDetailsDto) {
-        logger.info("Saving transaction device info: {}", deviceDetailsDto);
-        transactionDeviceInfoRepository.save(tokenMapper.dtoToEntity(deviceDetailsDto));
-        logger.debug("Device information saved successfully.");
-    }
-
-    /**
-     * Checks if a token exists with a given status and type.
-     *
-     * @param token     Token string.
-     * @param tokenType Type of token.
-     * @return true if token exists, false otherwise.
-     */
-    public boolean findByGeneratedTokenAndStatus(String token, TokenType tokenType) {
-        logger.debug("Checking if token exists for: {}", token);
-        return tokenRepository.existsByGeneratedTokenAndTokenTypeAndStatusAndIsTokenValid(token, tokenType, TokenStatus.ACTIVE, Boolean.TRUE);
-    }
-
-    /**
-     * Marks expired tokens as inactive.
-     */
-    public void markTokenExpired() {
-        logger.info("Marking expired tokens as inactive.");
-        List<Token> toBeExpiredTokens = tokenRepository.findByStatusAndTokenExpiryTimeLessThan(TokenStatus.ACTIVE, System.currentTimeMillis());
-        if (CollectionUtils.isNotEmpty(toBeExpiredTokens)) {
-            toBeExpiredTokens.forEach(this::markTokenInActive);
-            tokenRepository.saveAll(toBeExpiredTokens);
-            logger.info("Total {} tokens marked as expired.", toBeExpiredTokens.size());
-        } else {
-            logger.debug("No expired tokens found.");
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            return response.getData().getFirst();
         }
+        logger.error("Error in getBinCheckResponse {}", response.getErrors());
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "CardBinCheck"));
     }
 
-    /**
-     * Marks a given token as inactive.
-     *
-     * @param token Token to be marked inactive.
-     */
-    private void markTokenInActive(Token token) {
-        logger.debug("Marking token as inactive: {}", token);
-        token.setTokenValid(Boolean.FALSE);
-        token.setStatus(TokenStatus.INACTIVE);
-        token.setExpiredAt(System.currentTimeMillis());
-    }
 }
