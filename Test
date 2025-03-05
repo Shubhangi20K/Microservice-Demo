@@ -1,1 +1,130 @@
 
+package com.epay.transaction.externalservice;
+
+import com.epay.transaction.client.ApiClient;
+import com.epay.transaction.externalservice.request.payment.*;
+import com.epay.transaction.externalservice.response.payment.*;
+import com.epay.transaction.model.response.TransactionResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
+
+/**
+ * Class Name: PaymentServicesClient
+ * 
+ * Description: This class acts as a client service to interact with various payment APIs, 
+ * including UPI, INB, Visa/MasterCard, and RuPay transactions.
+ * 
+ * Author: V1014352 (Ranjan Kumar)
+ * 
+ * Copyright (c) 2025 [State Bank of India]
+ * All rights reserved.
+ * 
+ * Version: 1.0
+ */
+
+public class PaymentServicesClient extends ApiClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(PaymentServicesClient.class);
+
+    public static final String VPA_API_ENDPOINT = "/sbi/upi/vpa/validate-vpa";
+    public static final String INB_API_ENDPOINT = "/sbi/inb/initiate";
+    public static final String OTHER_INB_API_ENDPOINT = "/otherInbService/initiate";
+    public static final String VISA_MASTER_CARD_API_ENDPOINT = "/initiation/cardauthentication/visamaster";
+    public static final String RUPAY_CARD_API_ENDPOINT = "/initiation/cardauthentication/rupay";
+    public static final String UPI_VPA_ENDPOINT = "/sbi/upi/vpa/collect";
+    public static final String UPI_QR_ENDPOINT = "/sbi/upi/qr/sign";
+    public static final String GET_UPI_STATUS_DETAILS = "/sbi/upi/vpa/txn/status";
+
+    public PaymentServicesClient(String baseUrl) {
+        super(baseUrl);
+    }
+
+    /**
+     * Validates a UPI VPA (Virtual Payment Address).
+     *
+     * @param paymentRequest Request containing VPA details.
+     * @return TransactionResponse containing validation status.
+     */
+    public TransactionResponse<PaymentUPIVpaResponse> validateUPIPaymentVpa(PaymentUPIVpaRequest paymentRequest) {
+        logger.info("Validating UPI VPA: {}", paymentRequest);
+        return post(VPA_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<TransactionResponse<PaymentUPIVpaResponse>>() {});
+    }
+
+    /**
+     * Initiates an INB payment for other banks.
+     *
+     * @param paymentRequest Request containing payment details.
+     * @return TransactionResponse containing payment initiation response.
+     */
+    public TransactionResponse<PaymentOtherInbResponse> initiateOtherINBPayments(PaymentOtherINBReqest paymentRequest) {
+        logger.info("Initiating Other INB Payment: {}", paymentRequest);
+        return post(OTHER_INB_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<TransactionResponse<PaymentOtherInbResponse>>() {});
+    }
+
+    /**
+     * Initiates an SBI INB payment.
+     *
+     * @param paymentRequest Request containing payment details.
+     * @return TransactionResponse containing payment initiation response.
+     */
+    public TransactionResponse<PaymentResponse> initiateSBIINBPayments(PaymentINBRequest paymentRequest) {
+        logger.info("Initiating SBI INB Payment: {}", paymentRequest);
+        return post(INB_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
+    }
+
+    /**
+     * Initiates a Visa/MasterCard transaction.
+     *
+     * @param paymentRequest Request containing card payment details.
+     * @return TransactionResponse containing transaction response.
+     */
+    public TransactionResponse<PaymentVisaCardResponse> initiateVisaAndMasterCardAPI(PaymentCardRequest paymentRequest) {
+        logger.info("Initiating Visa/MasterCard Payment: {}", paymentRequest);
+        return post(VISA_MASTER_CARD_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
+    }
+
+    /**
+     * Initiates a RuPay card transaction.
+     *
+     * @param paymentRequest Request containing RuPay card payment details.
+     * @return TransactionResponse containing transaction response.
+     */
+    public TransactionResponse<PaymentRupayCardResponse> initiateRupPayCardAPI(PaymentCardRequest paymentRequest) {
+        logger.info("Initiating RuPay Card Payment: {}", paymentRequest);
+        return post(RUPAY_CARD_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
+    }
+
+    /**
+     * Initiates a UPI payment using VPA (Virtual Payment Address).
+     *
+     * @param paymentRequest Request containing UPI VPA payment details.
+     * @return TransactionResponse containing payment response.
+     */
+    public TransactionResponse<PaymentUPIVpaCollectGatewayResponse> initiateUPIVPAPayments(PaymentUPIRequest paymentRequest) {
+        logger.info("Initiating UPI VPA Payment: {}", paymentRequest);
+        return post(UPI_VPA_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
+    }
+
+    /**
+     * Fetches the status of a UPI payment transaction.
+     *
+     * @param paymentRequest Request containing transaction ID.
+     * @return TransactionResponse containing transaction status details.
+     */
+    public TransactionResponse<PaymentUPIStatusResponse> upiPaymentStatusEnquiry(PaymentStatusRequest paymentRequest) {
+        logger.info("Fetching UPI Payment Status: {}", paymentRequest);
+        return post(GET_UPI_STATUS_DETAILS, paymentRequest, new ParameterizedTypeReference<>() {});
+    }
+
+    /**
+     * Initiates a UPI QR code-based payment.
+     *
+     * @param paymentRequest Request containing QR payment details.
+     * @return TransactionResponse containing payment response.
+     */
+    public TransactionResponse<PaymentQRResponse> initiateUPIQRPayments(PaymentUPIQRRequest paymentRequest) {
+        logger.info("Initiating UPI QR Payment: {}", paymentRequest);
+        return post(UPI_QR_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
+    }
+}
