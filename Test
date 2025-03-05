@@ -1,1 +1,133 @@
 
+package com.epay.transaction.dao;
+
+import com.epay.transaction.dto.MerchantPaymentOrderDto;
+import com.epay.transaction.dto.RefundBookingDto;
+import com.epay.transaction.entity.RefundBooking;
+import com.epay.transaction.exceptions.ValidationException;
+import com.epay.transaction.mapper.RefundMapper;
+import com.epay.transaction.model.request.RefundSearchRequest;
+import com.epay.transaction.model.response.RefundResponse;
+import com.epay.transaction.repository.RefundRepository;
+import com.epay.transaction.specification.RefundBookingSpecification;
+import com.epay.transaction.util.enums.TransactionRefundStatus;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Component;
+
+import java.math.BigDecimal;
+import java.text.MessageFormat;
+
+import static com.epay.transaction.util.TransactionErrorConstants.*;
+
+
+/**
+ * The {@code RefundDao} class handles refund-related operations, including saving refund bookings,
+ * updating merchant payment records, retrieving refund details, and searching for refunds.
+ *
+ * <p>It interacts with the {@link RefundRepository}, {@link RefundMapper}, and {@link MerchantOrderPaymentDao}
+ * to perform database operations and data transformations.</p>
+ *
+ * <p><b>Author:</b> NIRMAL GURJAR</p>
+ *
+ * <p><b>Version:</b> 1.0</p>
+ *
+ * <p><b>Copyright:</b> (c) 2025 State Bank of India. All rights reserved.</p>
+ */
+@Component
+@RequiredArgsConstructor
+public class RefundDao {
+
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final RefundRepository refundRepository;
+    private final RefundMapper refundMapper;
+    private final MerchantOrderPaymentDao merchantOrderPaymentDao;
+
+    /**
+     * Saves a new refund booking record and updates the corresponding merchant payment order.
+     *
+     * @param refundBookingDto        DTO containing refund booking details
+     * @param merchantPaymentOrderDto DTO containing merchant payment order details
+     * @return {@link RefundResponse} containing the saved refund and updated merchant order details
+     */
+    @Transactional
+    public RefundResponse saveRefundBooking(RefundBookingDto refundBookingDto, MerchantPaymentOrderDto merchantPaymentOrderDto) {
+        logger.info("Saving refund booking - ARRN: {}", refundBookingDto.getArrnNumber());
+
+        RefundBooking refundBooking = refundRepository.save(refundMapper.dtoToEntity(refundBookingDto));
+        refundBookingDto = refundMapper.entityToDto(refundBooking);
+
+        logger.info("Updating merchant payment order after refund - ARRN: {}", refundBookingDto.getArrnNumber());
+        merchantPaymentOrderDto = updateMerchantPayment(refundBookingDto, merchantPaymentOrderDto);
+
+        return refundMapper.mapToRefundResponse(refundBookingDto, merchantPaymentOrderDto);
+    }
+
+    /**
+     * Updates the merchant payment order based on the refund booking details.
+     *
+     * @param refundBookingDto        DTO containing refund booking details
+     * @param merchantPaymentOrderDto DTO containing merchant payment order details
+     * @return {@link MerchantPaymentOrderDto} updated merchant payment order details
+     */
+    public MerchantPaymentOrderDto updateMerchantPayment(RefundBookingDto refundBookingDto, MerchantPaymentOrderDto merchantPaymentOrderDto) {
+        logger.info("Updating merchant payment - ARRN: {}", refundBookingDto.getArrnNumber());
+
+        BigDecimal newAvailableAmount = merchantPaymentOrderDto.getAvailableRefundAmount().subtract(refundBookingDto.getRefundAmount());
+        merchantPaymentOrderDto.setAvailableRefundAmount(newAvailableAmount);
+        merchantPaymentOrderDto.setRefundStatus(newAvailableAmount.compareTo(BigDecimal.ZERO) > 0
+                ? TransactionRefundStatus.PARTIAL_REFUND_BOOKED
+                : TransactionRefundStatus.FULL_REFUND_BOOKED);
+
+        return merchantOrderPaymentDao.save(merchantPaymentOrderDto);
+    }
+
+    /**
+     * Retrieves a merchant payment order by ATRN number.
+     *
+     * @param atrnNumber The ATRN number of the merchant payment order
+     * @return {@link MerchantPaymentOrderDto} containing payment order details
+     */
+    public MerchantPaymentOrderDto findByAtrnNumber(String atrnNumber) {
+        logger.info("Fetching merchant payment order - ATRN: {}", atrnNumber);
+        return merchantOrderPaymentDao.findByAtrnNumber(atrnNumber);
+    }
+
+    /**
+     * Retrieves refund booking details by ARRN number.
+     *
+     * @param arrn The ARRN number of the refund booking
+     * @return {@link RefundBookingDto} containing refund booking details
+     * @throws ValidationException if no refund booking is found for the given ARRN
+     */
+    public RefundBookingDto findRefundBookingByARRN(String arrn) {
+        logger.info("Fetching refund booking details - ARRN: {}", arrn);
+
+        RefundBooking refundBooking = refundRepository.findByArrnNumber(arrn)
+                .orElseThrow(() -> new ValidationException(NOT_FOUND_ERROR_CODE,
+                        MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, REFUND_BOOKING_DETAIL)));
+
+        return refundMapper.entityToDto(refundBooking);
+    }
+
+    /**
+     * Searches for refund bookings based on the provided search criteria.
+     *
+     * @param refundSearchRequest The search request containing filter parameters
+     * @param pageable            Pagination details
+     * @return {@link Page} of {@link RefundBookingDto} containing search results
+     */
+    public Page<RefundBookingDto> searchRefundBookingRequest(RefundSearchRequest refundSearchRequest, Pageable pageable) {
+        logger.info("Searching refund bookings - Merchant ID: {}", refundSearchRequest.getMId());
+
+        Specification<RefundBooking> specification = RefundBookingSpecification.searchRefund(refundSearchRequest);
+        Page<RefundBooking> refundBookingPage = refundRepository.findAll(specification, pageable);
+
+        return refundMapper.entityToDto(refundBookingPage);
+    }
+}
