@@ -1,166 +1,108 @@
+package com.epay.transaction.dao;
 
-package com.epay.transaction.validator;
-
-import com.epay.transaction.config.TransactionConfig;
 import com.epay.transaction.dto.MerchantPaymentOrderDto;
-import com.epay.transaction.exceptions.TransactionException;
-import com.epay.transaction.model.request.RefundBookRequest;
+import com.epay.transaction.dto.RefundBookingDto;
+import com.epay.transaction.entity.RefundBooking;
+import com.epay.transaction.exceptions.ValidationException;
+import com.epay.transaction.mapper.RefundMapper;
 import com.epay.transaction.model.request.RefundSearchRequest;
-import com.epay.transaction.util.DateTimeUtils;
-import com.epay.transaction.util.TransactionConstant;
-import com.epay.transaction.util.enums.RefundType;
-import com.epay.transaction.util.enums.TransactionStatus;
+import com.epay.transaction.model.response.RefundResponse;
+import com.epay.transaction.repository.RefundRepository;
+import com.epay.transaction.specification.RefundBookingSpecification;
+import com.epay.transaction.util.enums.TransactionRefundStatus;
 import com.sbi.epay.logging.utility.LoggerFactoryUtility;
 import com.sbi.epay.logging.utility.LoggerUtility;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
-import org.apache.commons.lang3.ObjectUtils;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.text.MessageFormat;
-import java.util.*;
 
 import static com.epay.transaction.util.TransactionErrorConstants.*;
 
+
 /**
- * Class Name: RefundValidator
- * 
- * Description: This class is responsible for validating refund booking and refund search requests. 
- * It ensures compliance with business rules and field constraints before processing transactions.
- * 
- * Author: NIRMAL GURJAR
- * 
- * Copyright (c) 2024 [State Bank of India]
- * All rights reserved.
- * 
- * Version: 1.0
+ * Class Name:RefundDao
+ * *
+ * Description:
+ * *
+ * Author:NIRMAL GURJAR
+ * <p>
+ * Copyright (c) 2025 [State Bank of India]
+ * All right reserved
+ * *
+ * Version:1.0
  */
 @Component
 @RequiredArgsConstructor
-public class RefundValidator extends BaseValidator {
+public class RefundDao {
 
     private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final RefundRepository refundRepository;
+    private final RefundMapper refundMapper;
+    private final MerchantOrderPaymentDao merchantOrderPaymentDao;
 
     /**
-     * Validates business rules for refund booking.
+     * Set the value for refund booking DTO and save refund booking details
      *
-     * @param refundBookRequest       The refund booking request containing refund details.
-     * @param merchantPaymentOrderDto The merchant payment order associated with the refund.
-     * @throws TransactionException If validation fails.
+     * @param refundBookingDto RefundBookingDto
+     * @return RefundBookingDto
      */
-    public void validateBusinessRules(RefundBookRequest refundBookRequest, MerchantPaymentOrderDto merchantPaymentOrderDto) {
-        logger.info("Validating business rules for ATRN: {}", refundBookRequest.getAtrnNumber());
+    @Transactional
+    public RefundResponse saveRefundBooking(RefundBookingDto refundBookingDto, MerchantPaymentOrderDto merchantPaymentOrderDto) {
 
-        // Step 1: Ensure transaction status is either SUCCESS or SETTLED
-        if (!TransactionStatus.SUCCESS.equals(merchantPaymentOrderDto.getTransactionStatus()) &&
-            !TransactionStatus.SETTLED.equals(merchantPaymentOrderDto.getTransactionStatus())) {
-            logger.warn("Invalid transaction status for ATRN {}: {}", refundBookRequest.getAtrnNumber(), merchantPaymentOrderDto.getTransactionStatus());
-            throw new TransactionException(INVALID_ERROR_CODE, MessageFormat.format(INVALID_ERROR_MESSAGE, MERCHANT_ORDER_PAYMENT_STATUS, MERCHANT_ORDR_PAYMENT_ST_NOT_VALID_AGAINST_ATRN));
-        }
+        logger.info("Call saveRefundBooking for arrn: {}", refundBookingDto.getArrnNumber());
+        RefundBooking refundBooking = refundRepository.save(refundMapper.dtoToEntity(refundBookingDto));
+        refundBookingDto = refundMapper.entityToDto(refundBooking);
 
-        // Step 2: Set available refund amount if it's the first refund request
-        if (ObjectUtils.isEmpty(merchantPaymentOrderDto.getRefundStatus())) {
-            logger.debug("First refund request for ATRN: {}. Setting available refund amount.", refundBookRequest.getAtrnNumber());
-            merchantPaymentOrderDto.setAvailableRefundAmount(merchantPaymentOrderDto.getOrderAmount());
-        }
+        logger.info("Updating merchant order payment after refund for arrn: {}", refundBookingDto.getArrnNumber());
+        merchantPaymentOrderDto = updateMerchantPayment(refundBookingDto, merchantPaymentOrderDto);
 
-        // Step 3: Validate refund amount against available refund amount
-        if (merchantPaymentOrderDto.getAvailableRefundAmount().compareTo(refundBookRequest.getRefundAmount()) < 0) {
-            logger.warn("Refund amount exceeds available refund amount for ATRN: {}", refundBookRequest.getAtrnNumber());
-            throw new TransactionException(INVALID_ERROR_CODE, MessageFormat.format(INVALID_ERROR_MESSAGE, REFUND_AMOUNT, REFUND_AMNT_MORE_THAN_AVAILABLE_AMNT_ERR_MSG));
-        }
-
-        // Step 4: Validate refund type
-        RefundType refundType = RefundType.getRefundType(refundBookRequest.getRefundType());
-
-        // Step 5: Ensure full refund amount matches available amount
-        if (RefundType.FULL.equals(refundType) && 
-            merchantPaymentOrderDto.getAvailableRefundAmount().compareTo(refundBookRequest.getRefundAmount()) != 0) {
-            logger.warn("Full refund amount mismatch for ATRN: {}", refundBookRequest.getAtrnNumber());
-            throw new TransactionException(INVALID_ERROR_CODE, MessageFormat.format(INVALID_ERROR_MESSAGE, REFUND_AMOUNT, FULL_REFUND_AMOUNT_MIS_MATCH));
-        }
-
-        // Step 6: Ensure partial refund amount is less than available refund amount
-        if (RefundType.PARTIAL.equals(refundType) && 
-            merchantPaymentOrderDto.getAvailableRefundAmount().compareTo(refundBookRequest.getRefundAmount()) == 0) {
-            logger.warn("Partial refund request amount should be less than available refund amount for ATRN: {}", refundBookRequest.getAtrnNumber());
-            throw new TransactionException(INVALID_ERROR_CODE, MessageFormat.format(INVALID_ERROR_MESSAGE, REFUND_AMOUNT, "Refund amount should be less than available refund amount for partial refund request type."));
-        }
+        return refundMapper.mapToRefundResponse(refundBookingDto, merchantPaymentOrderDto);
     }
 
     /**
-     * Performs basic validation on refund booking requests.
+     * Set the value for transaction DTO and save transaction details
      *
-     * @param refundBookRequest The refund booking request to validate.
+     * @param refundBookingDto        RefundBookingDto
+     * @param merchantPaymentOrderDto MerchantPaymentOrderDto
+     * @return MerchantPaymentOrderDto
      */
-    public void validateRefundRequest(RefundBookRequest refundBookRequest) {
-        logger.info("Starting validation for refundBookRequest: {}", refundBookRequest);
-        errorDtoList = new ArrayList<>();
-        validateMandatoryFields(refundBookRequest);
-        validateFieldsValue(refundBookRequest);
+    public MerchantPaymentOrderDto updateMerchantPayment(RefundBookingDto refundBookingDto, MerchantPaymentOrderDto merchantPaymentOrderDto) {
+        merchantPaymentOrderDto.setAvailableRefundAmount(merchantPaymentOrderDto.getAvailableRefundAmount().subtract(refundBookingDto.getRefundAmount()));
+        merchantPaymentOrderDto.setRefundStatus(merchantPaymentOrderDto.getAvailableRefundAmount().compareTo(BigDecimal.ZERO) > 0 ? TransactionRefundStatus.PARTIAL_REFUND_BOOKED : TransactionRefundStatus.FULL_REFUND_BOOKED );
+        return merchantOrderPaymentDao.save(merchantPaymentOrderDto);
     }
 
-    // Other validation methods remain unchanged with improved logging...
-    
-    /**
-     * Validates mandatory fields for refund search request.
-     *
-     * @param refundSearchRequest The refund search request.
-     */
-    protected void validateMandatoryFields(RefundSearchRequest refundSearchRequest) {
-        logger.info("Validating mandatory fields for refund search request: {}", refundSearchRequest);
-        checkMandatoryField(refundSearchRequest.getMId(), "MId");
-        throwIfErrors();
+    public MerchantPaymentOrderDto findByAtrnNumber(String atrnNumber) {
+        logger.info("find payment by atrn for arrn: {}", atrnNumber);
+        return merchantOrderPaymentDao.findByAtrnNumber(atrnNumber);
     }
 
     /**
-     * Validates field values for refund search request.
+     * find refund status for an ARRN
      *
-     * @param refundSearchRequest The refund search request.
+     * @return RefundBookingDto
      */
-    protected void validateFieldsValue(RefundSearchRequest refundSearchRequest) {
-        logger.info("Validating field values for MID: {}", refundSearchRequest.getMId());
-
-        if (ObjectUtils.isNotEmpty(refundSearchRequest.getFrom())) {
-            validateDate(refundSearchRequest.getFrom(), "From date");
-        }
-        if (ObjectUtils.isNotEmpty(refundSearchRequest.getTo())) {
-            validateDate(refundSearchRequest.getTo(), "To date");
-        }
-        throwIfErrors();
-
-        if (ObjectUtils.isNotEmpty(refundSearchRequest.getFrom()) && ObjectUtils.isNotEmpty(refundSearchRequest.getTo())) {
-            validateFromToDate(refundSearchRequest.getFrom(), refundSearchRequest.getTo());
-        }
-        throwIfErrors();
-
-        checkForLeadingTrailingAndSingleSpace(refundSearchRequest);
+    public RefundBookingDto findRefundBookingByARRN(String arrn) {
+        logger.info("Get findRefundBookingByARRN for arrn: {}", arrn);
+        RefundBooking refundBooking = refundRepository.findByArrnNumber(arrn).orElseThrow(() -> new ValidationException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, REFUND_BOOKING_DETAIL)));
+        return refundMapper.entityToDto(refundBooking);
     }
 
     /**
-     * Validates that the given date is not in the future.
+     * search refund details for requested parameters
      *
-     * @param dateTimeMillis The date in milliseconds.
-     * @param fieldName      The name of the field.
+     * @return Page<RefundBookingDto>
      */
-    protected void validateDate(Long dateTimeMillis, String fieldName) {
-        logger.info("Validating date for {}: {}", fieldName, dateTimeMillis);
-        if (dateTimeMillis > DateTimeUtils.getCurrentTimeInMills()) {
-            logger.warn("Invalid date: {} for field: {}", dateTimeMillis, fieldName);
-            addError(fieldName, INVALID_ERROR_CODE, "Date cannot be in the future.");
-        }
-    }
-
-    /**
-     * Validates that the from date is not greater than the to date.
-     *
-     * @param fromDateMillis The from date in milliseconds.
-     * @param toDateMillis   The to date in milliseconds.
-     */
-    protected void validateFromToDate(Long fromDateMillis, Long toDateMillis) {
-        logger.info("Validating date range: From {} to {}", fromDateMillis, toDateMillis);
-        if (fromDateMillis > toDateMillis) {
-            logger.warn("Invalid date range: From date {} is greater than To date {}", fromDateMillis, toDateMillis);
-            addError(INVALID_ERROR_CODE, "From date cannot be greater than To date.");
-        }
+    public Page<RefundBookingDto> searchRefundBookingRequest(RefundSearchRequest refundSearchRequest, Pageable pageable) {
+        logger.info("inside SearchRefund for mId: {}", refundSearchRequest.getMId());
+        Specification<RefundBooking> specification = RefundBookingSpecification.searchRefund(refundSearchRequest);
+        Page<RefundBooking> refundBookingPage = refundRepository.findAll(specification, pageable);
+        return refundMapper.entityToDto(refundBookingPage);
     }
 }
