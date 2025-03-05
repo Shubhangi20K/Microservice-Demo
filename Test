@@ -1,1 +1,102 @@
 
+/**
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author: @V0000001 (Shilpa Kothre)
+ * Version: 1.0
+ */
+
+package com.epay.transaction.repository;
+
+import com.epay.transaction.entity.Token;
+import com.epay.transaction.util.enums.TokenStatus;
+import com.sbi.epay.authentication.util.enums.TokenType;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface TokenRepository extends JpaRepository<Token, UUID> {
+
+    /**
+     * Retrieves the latest valid access token for a given merchant ID (mId) where the token is active and not expired.
+     *
+     * @param mId              Merchant ID for which the token is fetched.
+     * @param currentTimestamp The current timestamp to filter non-expired tokens.
+     * @return Optional containing the latest valid token if present.
+     */
+    @Query(""" 
+              SELECT t FROM Token t
+               WHERE t.tokenType = ACCESS AND t.status = ACTIVE AND t.mId = :mId AND t.tokenExpiryTime > :currentTimestamp
+                ORDER BY t.tokenExpiryTime DESC LIMIT 1
+            """)
+    Optional<Token> findLatestValidToken(@Param("mId") String mId, @Param("currentTimestamp") Long currentTimestamp);
+
+    /**
+     * Finds the latest transaction token associated with a specific order hash.
+     *
+     * @param orderHash The hash representing the order.
+     * @return Optional containing the latest token if present.
+     */
+    @Query(""" 
+              SELECT t FROM Token t WHERE t.tokenType = TRANSACTION AND t.orderHash = :orderHash ORDER BY t.tokenExpiryTime DESC LIMIT 1
+            """)
+    Optional<Token> findByOrderHash(@Param("orderHash") String orderHash);
+
+    /**
+     * Retrieves a token based on the generated token, status, and validity.
+     *
+     * @param generatedToken The generated token string.
+     * @param status         The status of the token.
+     * @param isTokenValid   Boolean indicating if the token is valid.
+     * @return Optional containing the token if found.
+     */
+    Optional<Token> findByGeneratedTokenAndStatusAndIsTokenValid(String generatedToken, TokenStatus status, boolean isTokenValid);
+
+    /**
+     * Retrieves all expired tokens based on the given status and expiry time.
+     *
+     * @param status           The status of the token.
+     * @param currentTimestamp The current timestamp to filter expired tokens.
+     * @return List of expired tokens.
+     */
+    List<Token> findByStatusAndTokenExpiryTimeLessThan(TokenStatus status, Long currentTimestamp);
+
+    /**
+     * Checks if a token exists based on the generated token, token type, status, and validity.
+     *
+     * @param generatedToken The generated token string.
+     * @param tokenType      The type of the token (ACCESS, TRANSACTION, etc.).
+     * @param status         The status of the token.
+     * @param isTokenValid   Boolean indicating if the token is valid.
+     * @return True if a matching token exists, otherwise false.
+     */
+    boolean existsByGeneratedTokenAndTokenTypeAndStatusAndIsTokenValid(String generatedToken, TokenType tokenType, TokenStatus status, boolean isTokenValid);
+
+    /**
+     * Retrieves a token based on the generated token and its status.
+     *
+     * @param generatedToken The generated token string.
+     * @param status         The status of the token.
+     * @return Optional containing the token if found.
+     */
+    Optional<Token> findByGeneratedTokenAndStatus(String generatedToken, TokenStatus status);
+}
+
+// Logger setup (Optional: Use in service layer instead of repository)
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+class TokenRepositoryLogger {
+    private static final Logger logger = LoggerFactory.getLogger(TokenRepository.class);
+
+    static {
+        logger.info("TokenRepository initialized.");
+    }
+}
