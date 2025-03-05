@@ -1,93 +1,36 @@
+package com.epay.transaction.externalservice;
 
-package com.epay.transaction.dao;
 
-import com.epay.transaction.exceptions.TransactionException;
-import com.epay.transaction.externalservice.EISServicesClient;
-import com.epay.transaction.model.request.EISCardNumberRequest;
-import com.epay.transaction.model.response.EncryptedResponse;
+import com.epay.transaction.client.ApiClient;
 import com.epay.transaction.model.response.TransactionResponse;
-import com.epay.transaction.util.TransactionConstant;
-import com.epay.transaction.util.TransactionErrorConstants;
-import com.sbi.epay.authentication.providers.EPayTokenProvider;
-import lombok.RequiredArgsConstructor;
-import org.apache.commons.collections4.CollectionUtils;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.stereotype.Component;
+import org.springframework.core.ParameterizedTypeReference;
 
-import java.text.MessageFormat;
+/**
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author:@V0000001(Shubhangi Kurelay)
+ * Version:1.0
+ */
 
-import static com.epay.transaction.util.EncryptionDecryptionUtil.encryptValue;
-import static com.epay.transaction.util.TransactionUtil.toJson;
 
-@Component
-@RequiredArgsConstructor
-public class EISDao {
+public class EISServicesClient extends ApiClient {
 
-    private static final Logger logger = LoggerFactory.getLogger(EISDao.class);
+    public static final String GST_IN = "/fetchGST/details";
+    public static final String ECOM_FLAG = "/ecomflag";
 
-    private final EISServicesClient eisServicesClient;
-    private final TokenDao tokenDao;
-    private final EPayTokenProvider ePayTokenProvider;
-
-    /**
-     * Retrieves the AES encryption key used for securing transactions.
-     *
-     * @return AES encryption key as a string.
-     */
-    public String getEncryptionAESKey() {
-        logger.info("Fetching AES encryption key");
-        return tokenDao.getEncryptionAESKey(ePayTokenProvider.getToken());
+    public EISServicesClient(String baseUrl) {
+        super(baseUrl);
     }
 
-    /**
-     * Retrieves the ECOM flag for the given card number request.
-     *
-     * @param eisCardNumberRequest The request containing the card number.
-     * @param key                  The encryption key for securing the response.
-     * @return Encrypted response containing the ECOM flag.
-     */
-    public EncryptedResponse getECOMFlag(EISCardNumberRequest eisCardNumberRequest, String key) {
-        logger.info("Fetching ECOM flag for cardNumber: {}", eisCardNumberRequest.getCardNumber());
-        TransactionResponse<String> response = eisServicesClient.getECOMFlag(eisCardNumberRequest.getCardNumber());
-        return handleResponse(response, eisCardNumberRequest.getCardNumber(), key);
+    public TransactionResponse<String> getECOMFlag(String cardNumber) {
+        return post(ECOM_FLAG, cardNumber, new ParameterizedTypeReference<>() {});
     }
 
-    /**
-     * Retrieves GSTIN details for the given card number request.
-     *
-     * @param eisCardNumberRequest The request containing the card number.
-     * @param key                  The encryption key for securing the response.
-     * @return Encrypted response containing GSTIN details.
-     */
-    public EncryptedResponse getGstInDetails(EISCardNumberRequest eisCardNumberRequest, String key) {
-        logger.info("Fetching GSTIN details for cardNumber: {}", eisCardNumberRequest.getCardNumber());
-        TransactionResponse<String> response = eisServicesClient.getGstInDetails(eisCardNumberRequest.getCardNumber());
-        return handleResponse(response, eisCardNumberRequest.getCardNumber(), key);
+    public TransactionResponse<String> getGstInDetails(String cardNumber) {
+        return post(GST_IN, cardNumber, new ParameterizedTypeReference<>() {});
     }
 
-    /**
-     * Handles the response received from EIS services, encrypting the data if successful
-     * or throwing an exception if an error occurs.
-     *
-     * @param response   The transaction response.
-     * @param cardNumber The card number associated with the request.
-     * @param key        The encryption key for securing the response.
-     * @param <T>        The type of the response data.
-     * @return Encrypted response containing the processed data.
-     * @throws TransactionException if the response contains errors or no data is found.
-     */
-    private <T> EncryptedResponse handleResponse(TransactionResponse<T> response, String cardNumber, String key) {
-        if (response.getStatus() == TransactionConstant.RESPONSE_SUCCESS && CollectionUtils.isNotEmpty(response.getData())) {
-            logger.info("Successfully fetched data for cardNumber: {}", cardNumber);
-            String encryptionResponse = encryptValue(key, toJson(response.getData().getFirst()));
-            return EncryptedResponse.builder().encryptedResponse(encryptionResponse).build();
-        } else if (response.getStatus() == TransactionConstant.RESPONSE_FAILURE && CollectionUtils.isNotEmpty(response.getErrors())) {
-            logger.error("Error fetching data for cardNumber: {} - Errors: {}", cardNumber, response.getErrors());
-            throw new TransactionException(response.getErrors());
-        }
-        logger.warn("No data found for cardNumber: {}", cardNumber);
-        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE,
-                MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, cardNumber));
-    }
 }
+
+
