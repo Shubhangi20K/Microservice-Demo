@@ -1,55 +1,24 @@
+package com.epay.transaction.dao;
 
+import com.epay.transaction.externalservice.response.admin.BinCheckResponse;
+import com.epay.transaction.externalservice.request.admin.BinCheckRequest;
+import com.sbi.epay.authentication.providers.EPayTokenProvider;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
-package com.epay.transaction.controller;
+@Component
+@RequiredArgsConstructor
+public class CardPaymentDao {
 
-import com.epay.transaction.model.request.EncryptedRequest;
-import com.epay.transaction.model.response.EncryptedResponse;
-import com.epay.transaction.model.response.TransactionResponse;
-import com.epay.transaction.service.CardPaymentService;
-import com.sbi.epay.logging.utility.LoggerFactoryUtility;
-import com.sbi.epay.logging.utility.LoggerUtility;
-import io.swagger.v3.oas.annotations.Operation;
-import jakarta.validation.Valid;
-import lombok.AllArgsConstructor;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+    private final TokenDao tokenDao;
+    private final AdminDao adminDao;
+    private final EPayTokenProvider ePayTokenProvider;
 
-/**
- * Class Name: CardsPaymentController
- * 
- * Description: This controller handles card payment-related operations, including 
- * card number verification (BIN check).
- * 
- * Author: V1018217
- * Copyright (c) 2025 [State Bank of India]
- * All rights reserved
- * 
- * Version: 1.0
- */
-@RestController
-@AllArgsConstructor
-@RequestMapping("/cards")
-public class CardsPaymentController {
+    public String getEncryptionAesKey(){
+        return tokenDao.getEncryptionAESKey(ePayTokenProvider.getToken());
+    }
 
-    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
-    private final CardPaymentService cardPaymentService;
-
-    /**
-     * Endpoint to verify the card number (BIN check).
-     * 
-     * @param encryptedRequest The encrypted request containing card details.
-     * @return TransactionResponse containing the encrypted response with BIN check results.
-     */
-    @PostMapping("/binCheck")
-    @Operation(summary = "Card Number Verification")
-    public TransactionResponse<EncryptedResponse> binCheck(@Valid @RequestBody EncryptedRequest encryptedRequest) {
-        logger.info("Received binCheck request: " + encryptedRequest);
-
-        TransactionResponse<EncryptedResponse> response = cardPaymentService.getCardBinCheck(encryptedRequest);
-        
-        logger.info("binCheck response: " + response);
-        return response;
+    public BinCheckResponse getCardBinCheck(BinCheckRequest binCheckRequest){
+        return adminDao.getBinCheckResponse(binCheckRequest);
     }
 }
