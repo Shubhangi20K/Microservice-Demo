@@ -1,98 +1,52 @@
+package com.epay.transaction.dao;
 
-package com.epay.transaction.service;
-
-/*
- * Copyright (c) [2024] [State Bank of India]
- * All rights reserved.
- * 
- * Author: @V0000001 (Shubhangi Kurelay)
- * Version: 1.0
- */
-
-import com.epay.transaction.dao.EISDao;
-import com.epay.transaction.exceptions.ValidationException;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.externalservice.EISServicesClient;
 import com.epay.transaction.model.request.EISCardNumberRequest;
-import com.epay.transaction.model.request.EncryptedRequest;
 import com.epay.transaction.model.response.EncryptedResponse;
 import com.epay.transaction.model.response.TransactionResponse;
 import com.epay.transaction.util.TransactionConstant;
-import com.sbi.epay.logging.utility.LoggerFactoryUtility;
-import com.sbi.epay.logging.utility.LoggerUtility;
+import com.epay.transaction.util.TransactionErrorConstants;
+import com.sbi.epay.authentication.providers.EPayTokenProvider;
 import lombok.RequiredArgsConstructor;
-import org.apache.commons.lang3.StringUtils;
-import org.springframework.stereotype.Service;
+import org.apache.commons.collections4.CollectionUtils;
+import org.springframework.stereotype.Component;
 
 import java.text.MessageFormat;
-import java.util.Collections;
 
-import static com.epay.transaction.util.TransactionErrorConstants.MANDATORY_ERROR_CODE;
-import static com.epay.transaction.util.TransactionErrorConstants.MANDATORY_ERROR_MESSAGE;
-import static com.epay.transaction.util.TransactionUtil.buildRequestByEncryptRequest;
+import static com.epay.transaction.util.EncryptionDecryptionUtil.encryptValue;
+import static com.epay.transaction.util.TransactionUtil.toJson;
 
-/**
- * Service class for handling EIS-related operations.
- * This service provides methods to retrieve GSTIN details and ECOM flag for a given request.
- */
-@Service
+@Component
 @RequiredArgsConstructor
-public class EISService {
-    
-    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
-    private final EISDao eisDao;
+public class EISDao {
 
-    /**
-     * Retrieves GSTIN (Goods and Services Tax Identification Number) details.
-     *
-     * @param request the encrypted request containing necessary details.
-     * @return a TransactionResponse containing the GSTIN details.
-     */
-    public TransactionResponse<EncryptedResponse> getGstInDetails(EncryptedRequest request) {
-        logger.info("Start getGstInDetails");
-        
-        String key = eisDao.getEncryptionAESKey();
-        EISCardNumberRequest eisCardNumberRequest = buildRequestByEncryptRequest(request.getEncryptedRequest(), key, EISCardNumberRequest.class);
-        validated(eisCardNumberRequest);
-        
-        EncryptedResponse encryptedResponse = eisDao.getGstInDetails(eisCardNumberRequest, key);
-        
-        logger.info("Completed getGstInDetails");
-        return TransactionResponse.<EncryptedResponse>builder()
-                .data(Collections.singletonList(encryptedResponse))
-                .status(TransactionConstant.RESPONSE_SUCCESS)
-                .build();
+    private final EISServicesClient eisServicesClient;
+    private final TokenDao tokenDao;
+    private final EPayTokenProvider ePayTokenProvider;
+
+    public String getEncryptionAESKey() {
+        return tokenDao.getEncryptionAESKey(ePayTokenProvider.getToken());
     }
 
-    /**
-     * Retrieves the ECOM (e-commerce) flag details.
-     *
-     * @param request the encrypted request containing necessary details.
-     * @return a TransactionResponse containing the ECOM flag details.
-     */
-    public TransactionResponse<EncryptedResponse> getECOMFlag(EncryptedRequest request) {
-        logger.info("Start getECOMFlag");
-        
-        String key = eisDao.getEncryptionAESKey();
-        EISCardNumberRequest eisCardNumberRequest = buildRequestByEncryptRequest(request.getEncryptedRequest(), key, EISCardNumberRequest.class);
-        validated(eisCardNumberRequest);
-        
-        EncryptedResponse encryptedResponse = eisDao.getECOMFlag(eisCardNumberRequest, key);
-        
-        logger.info("Completed getECOMFlag");
-        return TransactionResponse.<EncryptedResponse>builder()
-                .data(Collections.singletonList(encryptedResponse))
-                .status(TransactionConstant.RESPONSE_SUCCESS)
-                .build();
+    public EncryptedResponse getECOMFlag(EISCardNumberRequest eisCardNumberRequest, String key) {
+        TransactionResponse<String> response = eisServicesClient.getECOMFlag(eisCardNumberRequest.getCardNumber());
+        return handleResponse(response, eisCardNumberRequest.getCardNumber(), key);
     }
 
-    /**
-     * Validates the given EISCardNumberRequest.
-     *
-     * @param eisCardNumberRequest the request object to be validated.
-     * @throws ValidationException if the card number is missing.
-     */
-    private static void validated(EISCardNumberRequest eisCardNumberRequest) {
-        if (StringUtils.isEmpty(eisCardNumberRequest.getCardNumber())) {
-            throw new ValidationException(MANDATORY_ERROR_CODE, MessageFormat.format(MANDATORY_ERROR_MESSAGE, "cardNumber"));
+    public EncryptedResponse getGstInDetails(EISCardNumberRequest eisCardNumberRequest, String key) {
+        TransactionResponse<String> response = eisServicesClient.getGstInDetails(eisCardNumberRequest.getCardNumber());
+        return handleResponse(response, eisCardNumberRequest.getCardNumber(), key);
+    }
+
+    private <T> EncryptedResponse handleResponse(TransactionResponse<T> response, String cardNumber, String key) {
+        if (response.getStatus() == TransactionConstant.RESPONSE_SUCCESS && CollectionUtils.isNotEmpty(response.getData())) {
+            String encryptionResponse = encryptValue(key, toJson(response.getData().getFirst()));
+            return EncryptedResponse.builder().encryptedResponse(encryptionResponse).build();
+        } else if (response.getStatus() == TransactionConstant.RESPONSE_FAILURE && CollectionUtils.isNotEmpty(response.getErrors())) {
+            throw new TransactionException(response.getErrors());
         }
+        throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, cardNumber));
     }
+
 }
