@@ -1,1 +1,57 @@
 
+package com.epay.transaction.externalservice;
+
+import com.epay.transaction.client.ApiClient;
+import com.epay.transaction.model.response.TransactionResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
+
+/**
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * 
+ * Author: @V0000001 (Shubhangi Kurelay)
+ * Version: 1.0
+ * 
+ * Description: This class extends ApiClient and provides methods to interact 
+ * with external services related to GST and ECOM flag retrieval.
+ */
+public class EISServicesClient extends ApiClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(EISServicesClient.class);
+
+    public static final String GST_IN = "/fetchGST/details";
+    public static final String ECOM_FLAG = "/ecomflag";
+
+    /**
+     * Constructor to initialize EISServicesClient with a base URL.
+     * 
+     * @param baseUrl the base URL for the external service API
+     */
+    public EISServicesClient(String baseUrl) {
+        super(baseUrl);
+    }
+
+    /**
+     * Fetches the ECOM flag for a given card number.
+     * 
+     * @param cardNumber the card number for which the ECOM flag is to be retrieved
+     * @return a TransactionResponse containing the ECOM flag details
+     */
+    public TransactionResponse<String> getECOMFlag(String cardNumber) {
+        logger.info("Fetching ECOM flag for card number: {}", cardNumber);
+        return post(ECOM_FLAG, cardNumber, new ParameterizedTypeReference<>() {});
+    }
+
+    /**
+     * Fetches GST details for a given card number.
+     * 
+     * @param cardNumber the card number for which the GST details are to be retrieved
+     * @return a TransactionResponse containing the GST details
+     */
+    public TransactionResponse<String> getGstInDetails(String cardNumber) {
+        logger.info("Fetching GST details for card number: {}", cardNumber);
+        return post(GST_IN, cardNumber, new ParameterizedTypeReference<>() {});
+    }
+}
