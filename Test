@@ -1,69 +1,30 @@
-package com.epay.transaction.repository;
+package com.epay.transaction.mapper;
 
+
+import com.epay.transaction.dto.MerchantPaymentOrderDto;
 import com.epay.transaction.entity.MerchantOrderPayment;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.stereotype.Repository;
+import com.epay.transaction.model.response.MerchantOrderResponse;
+import org.mapstruct.Builder;
+import org.mapstruct.Mapper;
 
-import java.util.List;
-import java.util.Optional;
 
 /**
- * Class Name: MerchantOrderPaymentRepository
- * 
- * Description: Repository interface for handling CRUD operations related to MerchantOrderPayment.
- * 
- * Author: V1014352 (Ranjan Kumar)
- * 
- * Copyright (c) 2024 [State Bank of India]
- * All rights reserved.
- * 
- * Version: 1.0
+ * Class Name:MerchantOrderPaymentMapper
+ * *
+ * Description:
+ * *
+ * Author:V1014352(Ranjan Kumar)
+ * <p>
+ * Copyright (c) 2025 [State Bank of INdia]
+ * All right reserved
+ * *
+ * Version:1.0
  */
+@Mapper(builder = @Builder(disableBuilder = true), componentModel = "spring")
+public interface MerchantOrderPaymentMapper {
+    MerchantOrderPayment dtoToEntity(MerchantPaymentOrderDto merchantPaymentOrderDto);
 
-@Repository
-public interface MerchantOrderPaymentRepository extends JpaRepository<MerchantOrderPayment, String> {
+    MerchantPaymentOrderDto entityToDto(MerchantOrderPayment merchantOrderPayment);
 
-    Logger logger = LoggerFactory.getLogger(MerchantOrderPaymentRepository.class);
-
-    /**
-     * Retrieves a MerchantOrderPayment entity based on the given ATRN number.
-     *
-     * @param atrn ATRN number used to search for the order payment.
-     * @return Optional containing the MerchantOrderPayment if found, otherwise empty.
-     */
-    Optional<MerchantOrderPayment> findByAtrnNumber(String atrn);
-
-    /**
-     * Retrieves a MerchantOrderPayment entity based on the given Merchant ID and ATRN number.
-     *
-     * @param mId Merchant ID.
-     * @param atrnNumber ATRN number used to search for the order payment.
-     * @return Optional containing the MerchantOrderPayment if found, otherwise empty.
-     */
-    Optional<MerchantOrderPayment> findBymIdAndAtrnNumber(String mId, String atrnNumber);
-
-    /**
-     * Counts the number of transactions associated with a given SBI order reference number 
-     * and a list of transaction statuses.
-     *
-     * @param sbiOrderRefNumber SBI order reference number.
-     * @param statusList List of transaction statuses to filter results.
-     * @return Count of matching transactions.
-     */
-    @Query(value = "SELECT COUNT(t) FROM MerchantOrderPayment t WHERE t.sbiOrderRefNumber =:sbiOrderRefNumber AND t.transactionStatus IN (:statusList)")
-    int countBySbiOrderRefNumberAndTransactionStatusIn(String sbiOrderRefNumber, List<String> statusList);
-
-    /**
-     * Retrieves the count and sum of debit amounts for successful transactions 
-     * using an alternative card hash.
-     *
-     * @param altHash Alternate hash of the card.
-     * @return An Object array where index 0 contains the count and index 1 contains the sum of debit amounts.
-     */
-    @Query(value = "SELECT COUNT(*),NVL(SUM(MOP.DEBIT_AMT),0) FROM CARD_PAYMENT_SUMMARY
+    MerchantOrderResponse entityToMerchantOrderResponse(MerchantOrderPayment merchantOrderPayment);
+}
