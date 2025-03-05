@@ -1,1 +1,98 @@
 
+package com.epay.transaction.service;
+
+/*
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * 
+ * Author: @V0000001 (Shubhangi Kurelay)
+ * Version: 1.0
+ */
+
+import com.epay.transaction.dao.EISDao;
+import com.epay.transaction.exceptions.ValidationException;
+import com.epay.transaction.model.request.EISCardNumberRequest;
+import com.epay.transaction.model.request.EncryptedRequest;
+import com.epay.transaction.model.response.EncryptedResponse;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.util.TransactionConstant;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
+
+import java.text.MessageFormat;
+import java.util.Collections;
+
+import static com.epay.transaction.util.TransactionErrorConstants.MANDATORY_ERROR_CODE;
+import static com.epay.transaction.util.TransactionErrorConstants.MANDATORY_ERROR_MESSAGE;
+import static com.epay.transaction.util.TransactionUtil.buildRequestByEncryptRequest;
+
+/**
+ * Service class for handling EIS-related operations.
+ * This service provides methods to retrieve GSTIN details and ECOM flag for a given request.
+ */
+@Service
+@RequiredArgsConstructor
+public class EISService {
+    
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final EISDao eisDao;
+
+    /**
+     * Retrieves GSTIN (Goods and Services Tax Identification Number) details.
+     *
+     * @param request the encrypted request containing necessary details.
+     * @return a TransactionResponse containing the GSTIN details.
+     */
+    public TransactionResponse<EncryptedResponse> getGstInDetails(EncryptedRequest request) {
+        logger.info("Start getGstInDetails");
+        
+        String key = eisDao.getEncryptionAESKey();
+        EISCardNumberRequest eisCardNumberRequest = buildRequestByEncryptRequest(request.getEncryptedRequest(), key, EISCardNumberRequest.class);
+        validated(eisCardNumberRequest);
+        
+        EncryptedResponse encryptedResponse = eisDao.getGstInDetails(eisCardNumberRequest, key);
+        
+        logger.info("Completed getGstInDetails");
+        return TransactionResponse.<EncryptedResponse>builder()
+                .data(Collections.singletonList(encryptedResponse))
+                .status(TransactionConstant.RESPONSE_SUCCESS)
+                .build();
+    }
+
+    /**
+     * Retrieves the ECOM (e-commerce) flag details.
+     *
+     * @param request the encrypted request containing necessary details.
+     * @return a TransactionResponse containing the ECOM flag details.
+     */
+    public TransactionResponse<EncryptedResponse> getECOMFlag(EncryptedRequest request) {
+        logger.info("Start getECOMFlag");
+        
+        String key = eisDao.getEncryptionAESKey();
+        EISCardNumberRequest eisCardNumberRequest = buildRequestByEncryptRequest(request.getEncryptedRequest(), key, EISCardNumberRequest.class);
+        validated(eisCardNumberRequest);
+        
+        EncryptedResponse encryptedResponse = eisDao.getECOMFlag(eisCardNumberRequest, key);
+        
+        logger.info("Completed getECOMFlag");
+        return TransactionResponse.<EncryptedResponse>builder()
+                .data(Collections.singletonList(encryptedResponse))
+                .status(TransactionConstant.RESPONSE_SUCCESS)
+                .build();
+    }
+
+    /**
+     * Validates the given EISCardNumberRequest.
+     *
+     * @param eisCardNumberRequest the request object to be validated.
+     * @throws ValidationException if the card number is missing.
+     */
+    private static void validated(EISCardNumberRequest eisCardNumberRequest) {
+        if (StringUtils.isEmpty(eisCardNumberRequest.getCardNumber())) {
+            throw new ValidationException(MANDATORY_ERROR_CODE, MessageFormat.format(MANDATORY_ERROR_MESSAGE, "cardNumber"));
+        }
+    }
+}
