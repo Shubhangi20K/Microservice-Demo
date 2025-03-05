@@ -1,33 +1,63 @@
-package com.epay.transaction.repository;
+package com.epay.transaction.service;
 
-import com.epay.transaction.entity.RefundBooking;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.domain.Specification;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
-
-import java.util.Optional;
-import java.util.UUID;
-
-/**
- * Class Name:RefundBookingRepository
- * *
- * Description:
- * *
- * Author:Nirmal
+/*
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
  * <p>
- * Copyright (c) 2025 [State Bank of India]
- * All right reserved
- * *
+ * Author:@V0000001(Shubhangi Kurelay)
  * Version:1.0
  */
 
-@Repository
-public interface RefundRepository extends JpaRepository<RefundBooking, UUID> {
+import com.epay.transaction.dao.EISDao;
+import com.epay.transaction.exceptions.ValidationException;
+import com.epay.transaction.model.request.EISCardNumberRequest;
+import com.epay.transaction.model.request.EncryptedRequest;
+import com.epay.transaction.model.response.EncryptedResponse;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.util.TransactionConstant;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.stereotype.Service;
 
-    Optional<RefundBooking> findByArrnNumber(String arrn);
+import java.text.MessageFormat;
+import java.util.Collections;
 
-    Page<RefundBooking> findAll(Specification<RefundBooking> specification, Pageable pageable);
+import static com.epay.transaction.util.TransactionErrorConstants.MANDATORY_ERROR_CODE;
+import static com.epay.transaction.util.TransactionErrorConstants.MANDATORY_ERROR_MESSAGE;
+import static com.epay.transaction.util.TransactionUtil.buildRequestByEncryptRequest;
+
+@Service
+@RequiredArgsConstructor
+public class EISService {
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final EISDao eisDao;
+
+    public TransactionResponse<EncryptedResponse> getGstInDetails(EncryptedRequest request) {
+        logger.info("Start getGstInDetails");
+        String key = eisDao.getEncryptionAESKey();
+        EISCardNumberRequest eisCardNumberRequest = buildRequestByEncryptRequest(request.getEncryptedRequest(), key, EISCardNumberRequest.class);
+        validated(eisCardNumberRequest);
+        EncryptedResponse encryptedResponse = eisDao.getGstInDetails(eisCardNumberRequest, key);
+        logger.info("Completed getGstInDetails");
+        return TransactionResponse.<EncryptedResponse>builder().data(Collections.singletonList(encryptedResponse)).status(TransactionConstant.RESPONSE_SUCCESS).build();
+    }
+
+    public TransactionResponse<EncryptedResponse> getECOMFlag(EncryptedRequest request) {
+        logger.info("Start getECOMFlag");
+        String key = eisDao.getEncryptionAESKey();
+        EISCardNumberRequest eisCardNumberRequest = buildRequestByEncryptRequest(request.getEncryptedRequest(), key, EISCardNumberRequest.class);
+        validated(eisCardNumberRequest);
+        EncryptedResponse encryptedResponse = eisDao.getECOMFlag(eisCardNumberRequest, key);
+        logger.info("Completed getECOMFlag");
+        return TransactionResponse.<EncryptedResponse>builder().data(Collections.singletonList(encryptedResponse)).status(TransactionConstant.RESPONSE_SUCCESS).build();
+    }
+
+    private static void validated(EISCardNumberRequest eisCardNumberRequest) {
+        if (StringUtils.isEmpty(eisCardNumberRequest.getCardNumber())) {
+            throw new ValidationException(MANDATORY_ERROR_CODE, MessageFormat.format(MANDATORY_ERROR_MESSAGE, "cardNumber"));
+        }
+    }
 
 }
