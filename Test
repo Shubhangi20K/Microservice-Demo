@@ -2,8 +2,8 @@
  * Copyright (c) [2024] [State Bank of India]
  * All rights reserved.
  * <p>
- * Author:@V0000001(Shilpa Kothre)
- * Version:1.0
+ * Author: @V0000001 (Shilpa Kothre)
+ * Version: 1.0
  */
 
 package com.epay.transaction.dao;
@@ -38,92 +38,174 @@ public class TokenDao {
     private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
     private final TokenRepository tokenRepository;
     private final TransactionDeviceInfoRepository transactionDeviceInfoRepository;
-
     private final TokenMapper tokenMapper;
-
     private final KmsDao kmsDao;
     private final AdminDao adminDao;
     private final MerchantOrderDao merchantOrderDao;
 
-
+    /**
+     * Saves a token in the database.
+     *
+     * @param tokenDto DTO containing token details.
+     */
     public void saveToken(TokenDto tokenDto) {
+        logger.info("Saving token with details: {}", tokenDto);
         Token token = tokenMapper.dtoToEntity(tokenDto);
         tokenRepository.save(token);
+        logger.debug("Token saved successfully.");
     }
 
+    /**
+     * Retrieves Merchant ID using API key ID and secret.
+     *
+     * @param merchantApiKeyId     API key ID of the merchant.
+     * @param merchantApiKeySecret API key secret of the merchant.
+     * @return Merchant ID.
+     */
     public String getMIdByKeyIdAndSecret(String merchantApiKeyId, String merchantApiKeySecret) {
+        logger.debug("Fetching Merchant ID using API key.");
         return kmsDao.getMIdByKeyIdAndSecret(merchantApiKeyId, merchantApiKeySecret);
     }
 
+    /**
+     * Retrieves merchant details by Merchant ID.
+     *
+     * @param mId Merchant ID.
+     * @return Merchant information response.
+     */
     public MerchantInfoResponse getMerchantByMId(String mId) {
+        logger.debug("Fetching merchant details for MID: {}", mId);
         return adminDao.getMerchantByMId(mId);
     }
 
+    /**
+     * Retrieves active merchant order details using the order hash.
+     *
+     * @param orderHash Order hash.
+     * @return Merchant order details.
+     */
     public MerchantOrderDto getMerchantOrderByOrderHash(String orderHash) {
+        logger.debug("Fetching merchant order for order hash: {}", orderHash);
         return merchantOrderDao.getActiveOrderByOrderHash(orderHash);
     }
 
+    /**
+     * Checks if a merchant exists using the Merchant ID.
+     *
+     * @param mId Merchant ID.
+     * @return true if merchant exists, false otherwise.
+     */
     public boolean isMerchantExistByMid(String mId) {
+        logger.debug("Checking if merchant exists for MID: {}", mId);
         return ObjectUtils.isNotEmpty(adminDao.getMerchantByMId(mId));
     }
 
+    /**
+     * Invalidates an active token.
+     *
+     * @param requestedToken Token to be invalidated.
+     */
     public void invalidateToken(String requestedToken) {
-        Token token = tokenRepository.findByGeneratedTokenAndStatusAndIsTokenValid(requestedToken, TokenStatus.ACTIVE, true).orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, TransactionErrorConstants.ACTIVE_TOKEN)));
+        logger.info("Invalidating token: {}", requestedToken);
+        Token token = tokenRepository.findByGeneratedTokenAndStatusAndIsTokenValid(requestedToken, TokenStatus.ACTIVE, true)
+                .orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE,
+                        MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, TransactionErrorConstants.ACTIVE_TOKEN)));
         markTokenInActive(token);
         tokenRepository.save(token);
+        logger.debug("Token invalidated successfully.");
     }
 
+    /**
+     * Retrieves an active access token by Merchant ID.
+     *
+     * @param mId Merchant ID.
+     * @return Optional containing TokenDto if found.
+     */
     public Optional<TokenDto> getActiveAccessTokenByMId(String mId) {
-        logger.debug(" Find existing ACCESS token in database ");
+        logger.debug("Finding active ACCESS token for MID: {}", mId);
         Optional<Token> token = tokenRepository.findLatestValidToken(mId, System.currentTimeMillis());
-        logger.debug(" Result of ACCESS token in database: {0} ", token);
+        logger.debug("ACCESS token found: {}", token);
         return token.map(tokenMapper::entityToDto);
     }
 
+    /**
+     * Validates a token based on order hash.
+     *
+     * @param orderHash Order hash.
+     */
     public void validatedTokenByOrderHash(String orderHash) {
+        logger.debug("Validating token for order hash: {}", orderHash);
         Optional<Token> token = tokenRepository.findByOrderHash(orderHash);
         if (token.isPresent()) {
             if (TokenStatus.INACTIVE.equals(token.get().getStatus())) {
                 throw new TransactionException(TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_CODE, TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_MESSAGE);
             }
-            throw new TransactionException(TransactionErrorConstants.ALREADY_EXIST_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.ALREADY_EXIST_ERROR_MESSAGE, "Transaction Booking"));
+            throw new TransactionException(TransactionErrorConstants.ALREADY_EXIST_ERROR_CODE,
+                    MessageFormat.format(TransactionErrorConstants.ALREADY_EXIST_ERROR_MESSAGE, "Transaction Booking"));
         }
-    }
-
-    public String getEncryptionAESKey(String generatedToken) {
-        Token token = tokenRepository.findByGeneratedTokenAndStatus(generatedToken, TokenStatus.ACTIVE).orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Encryption Key")));
-        return token.getAesKey();
-    }
-
-    public void saveTransactionRequestedDeviceInfo(DeviceDetailsDto deviceDetailsDto) {
-        transactionDeviceInfoRepository.save(tokenMapper.dtoToEntity(deviceDetailsDto));
-        logger.debug(" data saved successfully for capture device information");
     }
 
     /**
-     * Find Token Details By generated token and Status
+     * Retrieves the AES encryption key for a given token.
      *
-     * @param token
-     * @param tokenType
-     * @return
+     * @param generatedToken Token value.
+     * @return AES encryption key.
+     */
+    public String getEncryptionAESKey(String generatedToken) {
+        logger.debug("Fetching AES key for token: {}", generatedToken);
+        Token token = tokenRepository.findByGeneratedTokenAndStatus(generatedToken, TokenStatus.ACTIVE)
+                .orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE,
+                        MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Encryption Key")));
+        return token.getAesKey();
+    }
+
+    /**
+     * Saves transaction device information.
+     *
+     * @param deviceDetailsDto DTO containing device details.
+     */
+    public void saveTransactionRequestedDeviceInfo(DeviceDetailsDto deviceDetailsDto) {
+        logger.info("Saving transaction device info: {}", deviceDetailsDto);
+        transactionDeviceInfoRepository.save(tokenMapper.dtoToEntity(deviceDetailsDto));
+        logger.debug("Device information saved successfully.");
+    }
+
+    /**
+     * Checks if a token exists with a given status and type.
+     *
+     * @param token     Token string.
+     * @param tokenType Type of token.
+     * @return true if token exists, false otherwise.
      */
     public boolean findByGeneratedTokenAndStatus(String token, TokenType tokenType) {
+        logger.debug("Checking if token exists for: {}", token);
         return tokenRepository.existsByGeneratedTokenAndTokenTypeAndStatusAndIsTokenValid(token, tokenType, TokenStatus.ACTIVE, Boolean.TRUE);
     }
 
+    /**
+     * Marks expired tokens as inactive.
+     */
     public void markTokenExpired() {
+        logger.info("Marking expired tokens as inactive.");
         List<Token> toBeExpiredTokens = tokenRepository.findByStatusAndTokenExpiryTimeLessThan(TokenStatus.ACTIVE, System.currentTimeMillis());
-        if(CollectionUtils.isNotEmpty(toBeExpiredTokens)) {
+        if (CollectionUtils.isNotEmpty(toBeExpiredTokens)) {
             toBeExpiredTokens.forEach(this::markTokenInActive);
             tokenRepository.saveAll(toBeExpiredTokens);
+            logger.info("Total {} tokens marked as expired.", toBeExpiredTokens.size());
+        } else {
+            logger.debug("No expired tokens found.");
         }
-        logger.info("Mark Total {} Token Expired", toBeExpiredTokens.size());
     }
 
+    /**
+     * Marks a given token as inactive.
+     *
+     * @param token Token to be marked inactive.
+     */
     private void markTokenInActive(Token token) {
+        logger.debug("Marking token as inactive: {}", token);
         token.setTokenValid(Boolean.FALSE);
         token.setStatus(TokenStatus.INACTIVE);
         token.setExpiredAt(System.currentTimeMillis());
     }
-
 }
