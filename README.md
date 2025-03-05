@@ -1,50 +1,78 @@
-    
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
+package com.sbi.epay.encryptdecrypt.service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
-import java.text.MessageFormat;
-import java.util.ArrayList;
-import java.util.List;
+import com.sbi.epay.encryptdecrypt.constant.EncryptionDecryptionConstants;
+import com.sbi.epay.encryptdecrypt.exception.EncryptionDecryptionException;
+import com.sbi.epay.encryptdecrypt.util.enums.KeyGenerationAlgo;
+import com.sbi.epay.encryptdecrypt.util.enums.SecretKeyLength;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import jdk.jfr.Description;
+import lombok.NonNull;
 
-@ExtendWith(MockitoExtension.class)
-class ThemeServiceTest {
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import java.security.InvalidParameterException;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.util.Base64;
 
-    @InjectMocks
-    private ThemeService themeService; // Assuming this method belongs to ThemeService
+/**
+ * Class Name: KeyGeneratorService
+ * *
+ * Description:This class will be used for generating keys and for there encryption and decryption.
+ * *
+ * Author: V1018212(Hrishikesh Pandirakar)
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
+ */
+@Description("This class will be used for generating keys and for there encryption and decryption.")
+public class KeyGeneratorService {
+    private static final LoggerUtility log = LoggerFactoryUtility.getLogger(KeyGeneratorService.class);
 
-    @Mock
-    private ThemeDao themeDao; // Mock the DAO dependency
-
-    private ThemeDto themeDto;
-
-    @BeforeEach
-    void setUp() {
-        themeDto = new ThemeDto();
-        themeDto.setMId("12345");
+    /**
+     * this method will generate a SecretKey based on size specified (256/128)
+     *
+     * @param secretKeyLength it specifies the size of key
+     * @return the String of encoded SecretKey
+     */
+    public static String generateKeyByDefaultAlgo(@NonNull SecretKeyLength secretKeyLength) throws EncryptionDecryptionException {
+        log.debug("KeyGeneratorService :: generateKey size {}", secretKeyLength);
+        return Base64.getEncoder().encodeToString(getSecretKey(secretKeyLength, KeyGenerationAlgo.AES).getEncoded());
     }
 
-    @Test
-    void validatedAlreadyPresentCreate_WhenThemeExists_ShouldThrowValidationException() {
-        when(themeDao.isPaymentPageThemeExistByMId(themeDto.getMId())).thenReturn(true);
-
-        Exception exception = assertThrows(ValidationException.class, 
-            () -> themeService.validatedAlreadyPresentCreate(themeDto));
-
-        assertTrue(exception.getMessage().contains("The theme with MId already exists"));
+    /**
+     * this method will generate a SecretKey based on size specified (256/128)
+     *
+     * @param secretKeyLength   it specifies the size of key
+     * @param keyGenerationAlgo it specifies the algorithm for key generation
+     * @return the String of encoded SecretKey
+     */
+    public static String generateKeyByAlgo(@NonNull SecretKeyLength secretKeyLength, @NonNull KeyGenerationAlgo keyGenerationAlgo) throws EncryptionDecryptionException {
+        log.debug("KeyGeneratorService :: generateKey size {}, keyGenerationAlgo {} ", secretKeyLength, keyGenerationAlgo);
+        return Base64.getEncoder().encodeToString(getSecretKey(secretKeyLength, keyGenerationAlgo).getEncoded());
     }
 
-    @Test
-    void validatedAlreadyPresentCreate_WhenThemeDoesNotExist_ShouldNotThrowException() {
-        when(themeDao.isPaymentPageThemeExistByMId(themeDto.getMId())).thenReturn(false);
 
-        assertDoesNotThrow(() -> themeService.validatedAlreadyPresentCreate(themeDto));
+    /**
+     * this method will generate a SecretKey based on size specified (256/128) and key generation algorithm
+     *
+     * @param keySize           it specifies the size of key
+     * @param keyGenerationAlgo it specifies the algorithm for key generation
+     * @return the SecretKey of encoded SecretKey
+     */
+    public static SecretKey getSecretKey(SecretKeyLength keySize, KeyGenerationAlgo keyGenerationAlgo) throws EncryptionDecryptionException {
+        try {
+            KeyGenerator keyGen = KeyGenerator.getInstance(keyGenerationAlgo.getAlgorithmName());
+            SecureRandom random = new SecureRandom();
+            keyGen.init(keySize.getLengthInBits(), random);
+            keyGen.init(keySize.getLengthInBits(), random);
+            return keyGen.generateKey();
+        } catch (NoSuchAlgorithmException | InvalidParameterException e) {
+            log.error("KeyGeneratorService :: getSecretKey ", e);
+            throw new EncryptionDecryptionException(EncryptionDecryptionConstants.GENERIC_ERROR_CODE, EncryptionDecryptionConstants.GENERIC_ERROR_MESSAGE);
+        }
     }
 }
