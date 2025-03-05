@@ -4,21 +4,53 @@ import com.epay.transaction.externalservice.response.admin.BinCheckResponse;
 import com.epay.transaction.externalservice.request.admin.BinCheckRequest;
 import com.sbi.epay.authentication.providers.EPayTokenProvider;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Component
 @RequiredArgsConstructor
 public class CardPaymentDao {
 
+    private static final Logger logger = LoggerFactory.getLogger(CardPaymentDao.class);
+
     private final TokenDao tokenDao;
     private final AdminDao adminDao;
     private final EPayTokenProvider ePayTokenProvider;
 
-    public String getEncryptionAesKey(){
-        return tokenDao.getEncryptionAESKey(ePayTokenProvider.getToken());
+    /**
+     * Retrieves the AES encryption key using a token from the token provider.
+     *
+     * @return AES encryption key as a String
+     */
+    public String getEncryptionAesKey() {
+        logger.info("Fetching encryption AES key.");
+        try {
+            String token = ePayTokenProvider.getToken();
+            String encryptionKey = tokenDao.getEncryptionAESKey(token);
+            logger.debug("Successfully retrieved encryption AES key.");
+            return encryptionKey;
+        } catch (Exception e) {
+            logger.error("Error fetching encryption AES key.", e);
+            throw e;
+        }
     }
 
-    public BinCheckResponse getCardBinCheck(BinCheckRequest binCheckRequest){
-        return adminDao.getBinCheckResponse(binCheckRequest);
+    /**
+     * Fetches card BIN check details based on the provided request.
+     *
+     * @param binCheckRequest The request object containing card BIN details.
+     * @return BinCheckResponse containing the validation details.
+     */
+    public BinCheckResponse getCardBinCheck(BinCheckRequest binCheckRequest) {
+        logger.info("Fetching card BIN check for request: {}", binCheckRequest);
+        try {
+            BinCheckResponse response = adminDao.getBinCheckResponse(binCheckRequest);
+            logger.debug("Received BIN check response: {}", response);
+            return response;
+        } catch (Exception e) {
+            logger.error("Error fetching card BIN check details.", e);
+            throw e;
+        }
     }
 }
