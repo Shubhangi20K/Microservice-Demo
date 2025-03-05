@@ -1,214 +1,125 @@
-
-/**
- * Copyright (c) [2024] [State Bank of India]
- * All rights reserved.
- * <p>
- * Author: @V0000001 (Shilpa Kothre)
- * Version: 1.0
- */
-
 package com.epay.transaction.dao;
 
-import com.epay.transaction.dto.MerchantOrderDto;
-import com.epay.transaction.dto.TokenDto;
-import com.epay.transaction.dto.booking.DeviceDetailsDto;
-import com.epay.transaction.entity.Token;
+import com.epay.transaction.dto.MerchantPaymentOrderDto;
 import com.epay.transaction.exceptions.TransactionException;
-import com.epay.transaction.externalservice.response.admin.MerchantInfoResponse;
-import com.epay.transaction.mapper.TokenMapper;
-import com.epay.transaction.repository.TokenRepository;
-import com.epay.transaction.repository.TransactionDeviceInfoRepository;
+import com.epay.transaction.externalservice.PaymentServicesClient;
+import com.epay.transaction.externalservice.request.payment.*;
+import com.epay.transaction.externalservice.response.payment.*;
+import com.epay.transaction.model.request.PaymentInitiationRequest;
+import com.epay.transaction.model.response.EncryptedResponse;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.util.TransactionConstant;
 import com.epay.transaction.util.TransactionErrorConstants;
-import com.epay.transaction.util.enums.TokenStatus;
-import com.sbi.epay.authentication.util.enums.TokenType;
+import com.epay.transaction.util.enums.PayMode;
 import com.sbi.epay.logging.utility.LoggerFactoryUtility;
 import com.sbi.epay.logging.utility.LoggerUtility;
 import lombok.RequiredArgsConstructor;
 import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.ObjectUtils;
-import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Service;
 
 import java.text.MessageFormat;
-import java.util.List;
-import java.util.Optional;
+
+import static com.epay.transaction.util.EncryptionDecryptionUtil.encryptValue;
+import static com.epay.transaction.util.TransactionUtil.toJson;
+import static com.epay.transaction.util.enums.PayMode.getPayMode;
 
 /**
- * DAO class for handling Token-related operations.
+ * Class Name:PaymentDao
+ * *
+ * Description:
+ * *
+ * Author:V1014352(Ranjan Kumar)
+ * <p>
+ * Copyright (c) 2025 [State Bank of India]
+ * All right reserved
+ * *
+ * Version:1.0
  */
-@Component
+@Service
 @RequiredArgsConstructor
-public class TokenDao {
-
+public class PaymentDao {
     private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
-    private final TokenRepository tokenRepository;
-    private final TransactionDeviceInfoRepository transactionDeviceInfoRepository;
-    private final TokenMapper tokenMapper;
-    private final KmsDao kmsDao;
-    private final AdminDao adminDao;
-    private final MerchantOrderDao merchantOrderDao;
 
-    /**
-     * Saves a new token to the database.
-     *
-     * @param tokenDto DTO containing token details
-     */
-    public void saveToken(TokenDto tokenDto) {
-        logger.info("Saving new token to the database");
-        Token token = tokenMapper.dtoToEntity(tokenDto);
-        tokenRepository.save(token);
-        logger.info("Token saved successfully");
+    private final PaymentServicesClient paymentServicesClient;
+
+    public EncryptedResponse paymentInitiation(String payModeString, MerchantPaymentOrderDto merchantPaymentOrderDto, PaymentInitiationRequest paymentInitiationRequest, String key) {
+        logger.info("paymentInitiation Started for payMode:{}, merchantPaymentOrderDto:{}, paymentInitiationRequest:{}", payModeString, merchantPaymentOrderDto, paymentInitiationRequest);
+        PayMode payMode = getPayMode(payModeString);
+        return switch (payMode) {
+            case CC, DC, PC -> processCardPayment(merchantPaymentOrderDto, paymentInitiationRequest, key);
+            case NB ->
+                    TransactionConstant.SBI_NAME.equalsIgnoreCase(paymentInitiationRequest.getChannelBank()) ? initiateNetBankingPayment(merchantPaymentOrderDto, key) : initiateOtherINBPayment(merchantPaymentOrderDto, key);
+            case UPI -> handleUpiPayment(merchantPaymentOrderDto, paymentInitiationRequest, key);
+            default ->
+                    throw new TransactionException(TransactionErrorConstants.INVALID_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.INVALID_ERROR_MESSAGE, payMode, "PayMode is not configured for payment"));
+        };
     }
 
-    /**
-     * Retrieves Merchant ID using API Key ID and Secret.
-     *
-     * @param merchantApiKeyId     Merchant API Key ID
-     * @param merchantApiKeySecret Merchant API Key Secret
-     * @return Merchant ID
-     */
-    public String getMIdByKeyIdAndSecret(String merchantApiKeyId, String merchantApiKeySecret) {
-        logger.debug("Fetching Merchant ID using API Key ID and Secret");
-        return kmsDao.getMIdByKeyIdAndSecret(merchantApiKeyId, merchantApiKeySecret);
+    public EncryptedResponse validateUPIPaymentVpa(PaymentUPIVpaRequest paymentUPIVpaRequest, String key) {
+        TransactionResponse<PaymentUPIVpaResponse> response = paymentServicesClient.validateUPIPaymentVpa(paymentUPIVpaRequest);
+        return handleResponse(response, key, TransactionConstant.PAYMENT_TYPE_VPA);
     }
 
-    /**
-     * Retrieves merchant information by Merchant ID.
-     *
-     * @param mId Merchant ID
-     * @return MerchantInfoResponse containing merchant details
-     */
-    public MerchantInfoResponse getMerchantByMId(String mId) {
-        logger.debug("Fetching merchant details for Merchant ID: {}", mId);
-        return adminDao.getMerchantByMId(mId);
+    public EncryptedResponse upiPaymentStatusEnquiry(PaymentStatusRequest paymentStatusRequest, String key) {
+        TransactionResponse<PaymentUPIStatusResponse> response = paymentServicesClient.upiPaymentStatusEnquiry(paymentStatusRequest);
+        return handleResponse(response, key, TransactionConstant.PAYMENT_TYPE_VPA);
     }
 
-    /**
-     * Retrieves active Merchant Order using the Order Hash.
-     *
-     * @param orderHash Order Hash
-     * @return MerchantOrderDto containing order details
-     */
-    public MerchantOrderDto getMerchantOrderByOrderHash(String orderHash) {
-        logger.debug("Fetching merchant order details for Order Hash: {}", orderHash);
-        return merchantOrderDao.getActiveOrderByOrderHash(orderHash);
-    }
-
-    /**
-     * Checks if a merchant exists for a given Merchant ID.
-     *
-     * @param mId Merchant ID
-     * @return true if merchant exists, otherwise false
-     */
-    public boolean isMerchantExistByMid(String mId) {
-        logger.debug("Checking if merchant exists for Merchant ID: {}", mId);
-        return ObjectUtils.isNotEmpty(adminDao.getMerchantByMId(mId));
-    }
-
-    /**
-     * Invalidates an active token by marking it inactive.
-     *
-     * @param requestedToken Token to be invalidated
-     */
-    public void invalidateToken(String requestedToken) {
-        logger.info("Invalidating token: {}", requestedToken);
-        Token token = tokenRepository.findByGeneratedTokenAndStatusAndIsTokenValid(requestedToken, TokenStatus.ACTIVE, true)
-                .orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-                        MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, TransactionErrorConstants.ACTIVE_TOKEN)));
-        markTokenInActive(token);
-        tokenRepository.save(token);
-        logger.info("Token invalidated successfully: {}", requestedToken);
-    }
-
-    /**
-     * Retrieves the latest valid access token for a given Merchant ID.
-     *
-     * @param mId Merchant ID
-     * @return Optional of TokenDto containing token details
-     */
-    public Optional<TokenDto> getActiveAccessTokenByMId(String mId) {
-        logger.debug("Fetching active ACCESS token for Merchant ID: {}", mId);
-        Optional<Token> token = tokenRepository.findLatestValidToken(mId, System.currentTimeMillis());
-        logger.debug("Result of ACCESS token query: {}", token);
-        return token.map(tokenMapper::entityToDto);
-    }
-
-    /**
-     * Validates if a token exists for a given Order Hash.
-     *
-     * @param orderHash Order Hash
-     */
-    public void validatedTokenByOrderHash(String orderHash) {
-        logger.debug("Validating token for Order Hash: {}", orderHash);
-        Optional<Token> token = tokenRepository.findByOrderHash(orderHash);
-        if (token.isPresent()) {
-            if (TokenStatus.INACTIVE.equals(token.get().getStatus())) {
-                throw new TransactionException(TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_CODE, 
-                        TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_MESSAGE);
-            }
-            throw new TransactionException(TransactionErrorConstants.ALREADY_EXIST_ERROR_CODE, 
-                    MessageFormat.format(TransactionErrorConstants.ALREADY_EXIST_ERROR_MESSAGE, "Transaction Booking"));
+    private EncryptedResponse processCardPayment(MerchantPaymentOrderDto merchantPaymentOrderDto, PaymentInitiationRequest paymentInitiationRequest, String key) {
+        PaymentCardRequest paymentCardRequest = buildPaymentCardRequest(merchantPaymentOrderDto, paymentInitiationRequest);
+        if (paymentInitiationRequest.getPayProcId().equalsIgnoreCase(TransactionConstant.PAYMENT_TYPE_VISA) || paymentInitiationRequest.getPayProcId().equalsIgnoreCase(TransactionConstant.PAYMENT_TYPE_MASTER)) {
+            TransactionResponse<PaymentVisaCardResponse> response = paymentServicesClient.initiateVisaAndMasterCardAPI(paymentCardRequest);
+            return handleResponse(response, key, paymentInitiationRequest.getPayProcId());
         }
+        TransactionResponse<PaymentRupayCardResponse> response = paymentServicesClient.initiateRupPayCardAPI(paymentCardRequest);
+        return handleResponse(response, key, paymentInitiationRequest.getPayProcId());
     }
 
-    /**
-     * Retrieves the AES encryption key associated with a generated token.
-     *
-     * @param generatedToken Generated Token
-     * @return AES Key
-     */
-    public String getEncryptionAESKey(String generatedToken) {
-        logger.debug("Fetching AES encryption key for token: {}", generatedToken);
-        Token token = tokenRepository.findByGeneratedTokenAndStatus(generatedToken, TokenStatus.ACTIVE)
-                .orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-                        MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Encryption Key")));
-        return token.getAesKey();
+    private EncryptedResponse initiateNetBankingPayment(MerchantPaymentOrderDto merchantPaymentOrderDto, String key) {
+        TransactionResponse<PaymentResponse> response = paymentServicesClient.initiateSBIINBPayments(PaymentINBRequest.builder().atrn(merchantPaymentOrderDto.getAtrnNumber()).build());
+        return handleResponse(response, key, PayMode.NB.name());
     }
 
-    /**
-     * Saves device information related to a transaction request.
-     *
-     * @param deviceDetailsDto DTO containing device details
-     */
-    public void saveTransactionRequestedDeviceInfo(DeviceDetailsDto deviceDetailsDto) {
-        logger.info("Saving transaction requested device information");
-        transactionDeviceInfoRepository.save(tokenMapper.dtoToEntity(deviceDetailsDto));
-        logger.info("Device information saved successfully");
+    private EncryptedResponse initiateOtherINBPayment(MerchantPaymentOrderDto merchantPaymentOrderDto, String key) {
+        TransactionResponse<PaymentOtherInbResponse> response = paymentServicesClient.initiateOtherINBPayments(buildPaymentOtherInbRequest(merchantPaymentOrderDto));
+        return handleResponse(response, key, PayMode.NB.name());
     }
 
-    /**
-     * Checks if a token exists by generated token and status.
-     *
-     * @param token     Token string
-     * @param tokenType Token type
-     * @return true if token exists, otherwise false
-     */
-    public boolean findByGeneratedTokenAndStatus(String token, TokenType tokenType) {
-        logger.debug("Checking existence of token: {}", token);
-        return tokenRepository.existsByGeneratedTokenAndTokenTypeAndStatusAndIsTokenValid(token, tokenType, TokenStatus.ACTIVE, Boolean.TRUE);
-    }
-
-    /**
-     * Marks expired tokens as inactive in the database.
-     */
-    public void markTokenExpired() {
-        logger.info("Marking expired tokens");
-        List<Token> toBeExpiredTokens = tokenRepository.findByStatusAndTokenExpiryTimeLessThan(TokenStatus.ACTIVE, System.currentTimeMillis());
-        if (CollectionUtils.isNotEmpty(toBeExpiredTokens)) {
-            toBeExpiredTokens.forEach(this::markTokenInActive);
-            tokenRepository.saveAll(toBeExpiredTokens);
+    private EncryptedResponse handleUpiPayment(MerchantPaymentOrderDto merchantPaymentOrderDto, PaymentInitiationRequest paymentInitiationRequest, String key) {
+        if (paymentInitiationRequest.getPayProcId().equalsIgnoreCase(TransactionConstant.PAY_PROC_ID_SELF)) {
+            TransactionResponse<PaymentUPIVpaCollectGatewayResponse> response = paymentServicesClient.initiateUPIVPAPayments(buildPaymentUPIRequest(merchantPaymentOrderDto, paymentInitiationRequest));
+            return handleResponse(response, key, PayMode.UPI.name());
+        } else if (paymentInitiationRequest.getPayProcId().equalsIgnoreCase(TransactionConstant.PAY_PROC_ID_BHIMQR)) {
+            TransactionResponse<PaymentQRResponse> response = paymentServicesClient.initiateUPIQRPayments(buildPaymentUPIQRRequest(merchantPaymentOrderDto, paymentInitiationRequest));
+            return handleResponse(response, key, PayMode.UPI.name());
         }
-        logger.info("Marked {} tokens as expired", toBeExpiredTokens.size());
+        throw new TransactionException(TransactionErrorConstants.INVALID_ERROR_CODE, TransactionErrorConstants.INVALID_ERROR_MESSAGE);
     }
 
-    /**
-     * Marks a token as inactive.
-     *
-     * @param token Token entity to be marked inactive
-     */
-    private void markTokenInActive(Token token) {
-        logger.debug("Marking token inactive: {}", token.getGeneratedToken());
-        token.setTokenValid(Boolean.FALSE);
-        token.setStatus(TokenStatus.INACTIVE);
-        token.setExpiredAt(System.currentTimeMillis());
+    private PaymentOtherINBReqest buildPaymentOtherInbRequest(MerchantPaymentOrderDto merchantPaymentOrderDto) {
+        return PaymentOtherINBReqest.builder().atrn(String.valueOf(merchantPaymentOrderDto.getAtrnNumber())).build();
     }
+
+    private PaymentCardRequest buildPaymentCardRequest(MerchantPaymentOrderDto merchantPaymentOrderDto, PaymentInitiationRequest paymentInitiationRequest) {
+        return PaymentCardRequest.builder().altNumber(paymentInitiationRequest.getAltNumber()).cardHolderName(paymentInitiationRequest.getCardHolderName()).cvv(paymentInitiationRequest.getCvv()).gtwMapsId(paymentInitiationRequest.getGtwMapsId()).expiryMonth(paymentInitiationRequest.getExpiryMonth()).expiryYear(paymentInitiationRequest.getExpiryYear()).operatingMode(paymentInitiationRequest.getOperatingMode()).payProcId(paymentInitiationRequest.getPayProcId()).payProcType(paymentInitiationRequest.getPayProcType()).merchPostedAmount(paymentInitiationRequest.getMerchPostedAmount()).transactionAmount(paymentInitiationRequest.getTransactionAmount()).mId(merchantPaymentOrderDto.getMId()).atrn(String.valueOf(merchantPaymentOrderDto.getAtrnNumber())).paymode(merchantPaymentOrderDto.getPayMode()).build();
+    }
+
+    private PaymentUPIRequest buildPaymentUPIRequest(MerchantPaymentOrderDto merchantPaymentOrderDto, PaymentInitiationRequest paymentInitiationRequest) {
+        return PaymentUPIRequest.builder().payGtwMapId(paymentInitiationRequest.getGtwMapsId()).virtualAddress(paymentInitiationRequest.getUpiAddress()).atrn(String.valueOf(merchantPaymentOrderDto.getAtrnNumber())).build();
+    }
+
+    private PaymentUPIQRRequest buildPaymentUPIQRRequest(MerchantPaymentOrderDto merchantPaymentOrderDto, PaymentInitiationRequest paymentInitiationRequest) {
+        return PaymentUPIQRRequest.builder().gtwMapId(paymentInitiationRequest.getGtwMapsId()).pspRefNo(String.valueOf(merchantPaymentOrderDto.getAtrnNumber())).build();
+    }
+
+    private <T> EncryptedResponse handleResponse(TransactionResponse<T> response, String paymentType, String key) {
+        if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
+            String encryptionResponse = encryptValue(key, toJson(response.getData().getFirst()));
+            return EncryptedResponse.builder().encryptedResponse(encryptionResponse).build();
+        } else if (TransactionConstant.RESPONSE_FAILURE == response.getStatus() && CollectionUtils.isNotEmpty(response.getErrors())) {
+            throw new TransactionException(response.getErrors());
+        }
+        throw new TransactionException(TransactionErrorConstants.PAYMENT_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.PAYMENT_ERROR_MESSAGE, paymentType));
+    }
+
 }
