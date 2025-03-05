@@ -1,58 +1,129 @@
+/**
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author:@V0000001(Shilpa Kothre)
+ * Version:1.0
+ */
+
 package com.epay.transaction.dao;
 
-import com.epay.transaction.externalservice.request.payment.PaymentStatusRequest;
-import com.epay.transaction.externalservice.request.payment.PaymentUPIVpaRequest;
-import com.epay.transaction.model.response.EncryptedResponse;
-import com.sbi.epay.authentication.providers.EPayTokenProvider;
+import com.epay.transaction.dto.MerchantOrderDto;
+import com.epay.transaction.dto.TokenDto;
+import com.epay.transaction.dto.booking.DeviceDetailsDto;
+import com.epay.transaction.entity.Token;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.externalservice.response.admin.MerchantInfoResponse;
+import com.epay.transaction.mapper.TokenMapper;
+import com.epay.transaction.repository.TokenRepository;
+import com.epay.transaction.repository.TransactionDeviceInfoRepository;
+import com.epay.transaction.util.TransactionErrorConstants;
+import com.epay.transaction.util.enums.TokenStatus;
+import com.sbi.epay.authentication.util.enums.TokenType;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.ObjectUtils;
 import org.springframework.stereotype.Component;
 
-/**
- * DAO class responsible for handling UPI payment-related operations.
- */
+import java.text.MessageFormat;
+import java.util.List;
+import java.util.Optional;
+
 @Component
 @RequiredArgsConstructor
-public class PaymentUPIDao {
-    
-    private static final Logger logger = LoggerFactory.getLogger(PaymentUPIDao.class);
+public class TokenDao {
 
-    private final PaymentDao paymentDao;
-    private final TokenDao tokenDao;
-    private final EPayTokenProvider ePayTokenProvider;
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final TokenRepository tokenRepository;
+    private final TransactionDeviceInfoRepository transactionDeviceInfoRepository;
 
-    /**
-     * Retrieves the encrypted AES key using the authentication token.
-     *
-     * @return Encrypted AES key as a String.
-     */
-    public String getEncryptedAESKey() {
-        logger.info("Fetching encrypted AES key.");
-        return tokenDao.getEncryptionAESKey(ePayTokenProvider.getToken());
+    private final TokenMapper tokenMapper;
+
+    private final KmsDao kmsDao;
+    private final AdminDao adminDao;
+    private final MerchantOrderDao merchantOrderDao;
+
+
+    public void saveToken(TokenDto tokenDto) {
+        Token token = tokenMapper.dtoToEntity(tokenDto);
+        tokenRepository.save(token);
+    }
+
+    public String getMIdByKeyIdAndSecret(String merchantApiKeyId, String merchantApiKeySecret) {
+        return kmsDao.getMIdByKeyIdAndSecret(merchantApiKeyId, merchantApiKeySecret);
+    }
+
+    public MerchantInfoResponse getMerchantByMId(String mId) {
+        return adminDao.getMerchantByMId(mId);
+    }
+
+    public MerchantOrderDto getMerchantOrderByOrderHash(String orderHash) {
+        return merchantOrderDao.getActiveOrderByOrderHash(orderHash);
+    }
+
+    public boolean isMerchantExistByMid(String mId) {
+        return ObjectUtils.isNotEmpty(adminDao.getMerchantByMId(mId));
+    }
+
+    public void invalidateToken(String requestedToken) {
+        Token token = tokenRepository.findByGeneratedTokenAndStatusAndIsTokenValid(requestedToken, TokenStatus.ACTIVE, true).orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, TransactionErrorConstants.ACTIVE_TOKEN)));
+        markTokenInActive(token);
+        tokenRepository.save(token);
+    }
+
+    public Optional<TokenDto> getActiveAccessTokenByMId(String mId) {
+        logger.debug(" Find existing ACCESS token in database ");
+        Optional<Token> token = tokenRepository.findLatestValidToken(mId, System.currentTimeMillis());
+        logger.debug(" Result of ACCESS token in database: {0} ", token);
+        return token.map(tokenMapper::entityToDto);
+    }
+
+    public void validatedTokenByOrderHash(String orderHash) {
+        Optional<Token> token = tokenRepository.findByOrderHash(orderHash);
+        if (token.isPresent()) {
+            if (TokenStatus.INACTIVE.equals(token.get().getStatus())) {
+                throw new TransactionException(TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_CODE, TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_MESSAGE);
+            }
+            throw new TransactionException(TransactionErrorConstants.ALREADY_EXIST_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.ALREADY_EXIST_ERROR_MESSAGE, "Transaction Booking"));
+        }
+    }
+
+    public String getEncryptionAESKey(String generatedToken) {
+        Token token = tokenRepository.findByGeneratedTokenAndStatus(generatedToken, TokenStatus.ACTIVE).orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Encryption Key")));
+        return token.getAesKey();
+    }
+
+    public void saveTransactionRequestedDeviceInfo(DeviceDetailsDto deviceDetailsDto) {
+        transactionDeviceInfoRepository.save(tokenMapper.dtoToEntity(deviceDetailsDto));
+        logger.debug(" data saved successfully for capture device information");
     }
 
     /**
-     * Validates the UPI payment VPA (Virtual Payment Address).
+     * Find Token Details By generated token and Status
      *
-     * @param paymentUPIVpaRequest Request object containing VPA details.
-     * @param key                  Encryption key for securing the request.
-     * @return EncryptedResponse containing the validation result.
+     * @param token
+     * @param tokenType
+     * @return
      */
-    public EncryptedResponse validateUPIPaymentVpa(PaymentUPIVpaRequest paymentUPIVpaRequest, String key) {
-        logger.info("Validating UPI Payment VPA for request: {}", paymentUPIVpaRequest);
-        return paymentDao.validateUPIPaymentVpa(paymentUPIVpaRequest, key);
+    public boolean findByGeneratedTokenAndStatus(String token, TokenType tokenType) {
+        return tokenRepository.existsByGeneratedTokenAndTokenTypeAndStatusAndIsTokenValid(token, tokenType, TokenStatus.ACTIVE, Boolean.TRUE);
     }
 
-    /**
-     * Performs a status enquiry for a UPI payment.
-     *
-     * @param paymentStatusRequest Request object containing payment status details.
-     * @param key                  Encryption key for securing the request.
-     * @return EncryptedResponse containing the status enquiry result.
-     */
-    public EncryptedResponse upiPaymentStatusEnquiry(PaymentStatusRequest paymentStatusRequest, String key) {
-        logger.info("Performing UPI payment status enquiry for request: {}", paymentStatusRequest);
-        return paymentDao.upiPaymentStatusEnquiry(paymentStatusRequest, key);
+    public void markTokenExpired() {
+        List<Token> toBeExpiredTokens = tokenRepository.findByStatusAndTokenExpiryTimeLessThan(TokenStatus.ACTIVE, System.currentTimeMillis());
+        if(CollectionUtils.isNotEmpty(toBeExpiredTokens)) {
+            toBeExpiredTokens.forEach(this::markTokenInActive);
+            tokenRepository.saveAll(toBeExpiredTokens);
+        }
+        logger.info("Mark Total {} Token Expired", toBeExpiredTokens.size());
     }
+
+    private void markTokenInActive(Token token) {
+        token.setTokenValid(Boolean.FALSE);
+        token.setStatus(TokenStatus.INACTIVE);
+        token.setExpiredAt(System.currentTimeMillis());
+    }
+
 }
