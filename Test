@@ -1,160 +1,43 @@
+package com.epay.transaction.controller;
+
+import com.epay.transaction.model.request.EncryptedRequest;
+import com.epay.transaction.model.response.EncryptedResponse;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.service.CardPaymentService;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.validation.Valid;
+import lombok.AllArgsConstructor;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Validates if the given currency code is valid for the merchant.
- *
- * @param mId          Merchant ID
- * @param currencyCode Currency Code
- * @return true if valid, false otherwise
+ * Class Name: CardsPaymentController
+ * *
+ * Description:
+ * *
+ * Author: V1018217
+ * Copyright (c) 2025 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
  */
-public boolean isValidCurrencyCode(String mId, String currencyCode) {
-    CurrencyRequest currencyRequest = CurrencyRequest.builder().mId(mId).currencyCode(currencyCode).build();
-    TransactionResponse<?> response = adminServicesClient.getCurrencyValidate(currencyRequest);
-    return TransactionConstant.RESPONSE_SUCCESS == response.getStatus();
-}
+@RestController
+@AllArgsConstructor
+@RequestMapping("/cards")
 
-/**
- * Fetches RFC details for a given merchant.
- *
- * @param mId Merchant ID
- * @return MerchantRfcDetailsResponse
- */
-public MerchantRfcDetailsResponse getMerchantRFCDetails(String mId) {
-    TransactionResponse<MerchantRfcDetailsResponse> response = adminServicesClient.getMerchantRFCInfo(mId);
-    if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
-        return response.getData().getFirst();
+public class CardsPaymentController {
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final CardPaymentService cardPaymentService;
+
+    @PostMapping("/binCheck")
+    @Operation(summary = "Card Number Verification")
+    public TransactionResponse<EncryptedResponse> binCheck(@Valid @RequestBody EncryptedRequest encryptedRequest) {
+        logger.info(" checking the binCheck request : " + encryptedRequest);
+        return cardPaymentService.getCardBinCheck(encryptedRequest);
     }
-    logger.error("Error in getMerchantRFCDetails {}", response.getErrors());
-    throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-            MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MerchantRFCDetails"));
-}
 
-/**
- * Retrieves multiple account details for a given merchant.
- *
- * @param mId Merchant ID
- * @return Map containing account details
- */
-public Map<String, List<String>> getMerchantMultiAccount(String mId) {
-    TransactionResponse<Map<String, List<String>>> response = adminServicesClient.getMultiAccountDetailsApi(mId);
-    if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
-        return response.getData().getFirst();
-    }
-    logger.error("Error in getMerchantMultiAccount {}", response.getErrors());
-    throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-            MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MerchantMultiAccount"));
-}
-
-/**
- * Fetches available payment modes for a given merchant.
- *
- * @param mId Merchant ID
- * @return JsonNode containing payment modes
- */
-public JsonNode getMerchantPayModes(String mId) {
-    TransactionResponse<JsonNode> response = adminServicesClient.getMerchantPayModeInfo(mId);
-    if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
-        return response.getData().getFirst().get("paymodes");
-    }
-    logger.error("Error in getMerchantPayModes {}", response.getErrors());
-    throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-            MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MerchantPayModes"));
-}
-
-/**
- * Retrieves Merchant Volume Velocity (VVL) details.
- *
- * @param mId Merchant ID
- * @return List of MerchantVolumeVelocityResponse
- */
-public List<MerchantVolumeVelocityResponse> getMerchantVVLDetails(String mId) {
-    TransactionResponse<MerchantVolumeVelocityResponse> response = adminServicesClient.geVvlDetails(mId);
-    if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
-        return response.getData();
-    }
-    logger.error("Error in getMerchantVVLDetails {}", response.getErrors());
-    throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-            MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MerchantVVLDetails"));
-}
-
-/**
- * Fetches Gateway Configuration Details for a given merchant and gateway mapping ID.
- *
- * @param mId          Merchant ID
- * @param gateWayMapId Gateway Mapping ID
- * @return GatewayConfigDetailsResponse
- */
-public GatewayConfigDetailsResponse getGatewayConfigDetails(String mId, String gateWayMapId) {
-    TransactionResponse<GatewayConfigDetailsResponse> response = adminServicesClient.getGatewayConfigDetails(mId, gateWayMapId);
-    if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
-        return response.getData().getFirst();
-    }
-    logger.error("Error in getGatewayConfigDetails {}", response.getErrors());
-    throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-            MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "GatewayConfigDetails"));
-}
-
-/**
- * Retrieves the valid merchant pricing structure.
- *
- * @param merchantPricingRequest MerchantPricingRequest object
- * @return MerchantPricingResponse
- */
-public MerchantPricingResponse getValidMerchantPricingStructure(MerchantPricingRequest merchantPricingRequest) {
-    TransactionResponse<MerchantPricingResponse> response = adminServicesClient.getMerchantPricingStructure(merchantPricingRequest);
-    if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
-        MerchantPricingResponse merchantPricingResponse = response.getData().getFirst();
-        
-        if (ObjectUtils.isEmpty(merchantPricingResponse.getFeeProcessingFlag()) || 
-            !merchantPricingResponse.getFeeProcessingFlag().equals(TransactionConstant.TRANSACTION_PROCESSING_FLAG_HYBRID)) {
-            logger.info("Processing flag validation failed for MerchantPricingResponse: {}", merchantPricingResponse);
-            throw new ValidationException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-                    MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Hybrid transaction processing flag"));
-        }
-        
-        if (ObjectUtils.isEmpty(merchantPricingResponse.getBearableComponent()) || 
-            !(merchantPricingResponse.getBearableComponent().equalsIgnoreCase(TransactionConstant.BEARABLE_COMPONENT_FEE) ||
-              merchantPricingResponse.getBearableComponent().equalsIgnoreCase(TransactionConstant.BEARABLE_COMPONENT_AMOUNT))) {
-            logger.info("Bearable component validation failed for MerchantPricingResponse: {}", merchantPricingResponse);
-            throw new ValidationException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-                    MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Valid bearable compound"));
-        }
-        
-        return merchantPricingResponse;
-    }
-    logger.error("Error in getMerchantPricingStructure {}", response.getErrors());
-    throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-            MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Merchant Pricing information"));
-}
-
-/**
- * Retrieves BIN check response for a given BIN check request.
- *
- * @param binCheckRequest BinCheckRequest object
- * @return BinCheckResponse
- */
-public BinCheckResponse getBinCheckResponse(BinCheckRequest binCheckRequest) {
-    TransactionResponse<BinCheckResponse> response = adminServicesClient.binCheckRequest(binCheckRequest);
-    
-    if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
-        return response.getData().getFirst();
-    }
-    logger.error("Error in getBinCheckResponse {}", response.getErrors());
-    throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-            MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "CardBinCheck"));
-}
-
-/**
- * Retrieves merchant information using Merchant ID.
- *
- * @param mId Merchant ID
- * @return MerchantInfoResponse
- */
-public MerchantInfoResponse getMerchantByMId(String mId) {
-    TransactionResponse<MerchantInfoResponse> response = adminServicesClient.getMerchantInfoByMId(mId);
-    if (TransactionConstant.RESPONSE_SUCCESS == response.getStatus() && CollectionUtils.isNotEmpty(response.getData())) {
-        return response.getData().getFirst();
-    }
-    logger.error("Error in getMerchantByMId {}", response.getErrors());
-    throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, 
-            MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "MId"));
 }
