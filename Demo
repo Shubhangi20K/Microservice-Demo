@@ -1,1 +1,102 @@
 
+package com.epay.payment.service;
+
+import com.epay.payment.dao.PaymentDao;
+import com.epay.payment.dao.TransactionDao;
+import com.epay.payment.dto.TransactionDto;
+import com.epay.payment.entity.PostingData;
+import com.epay.payment.model.request.PaymentRequest;
+import com.epay.payment.model.response.PaymentResponse;
+import com.epay.payment.util.InbEncryptionDecryptionUtil;
+import com.epay.payment.util.PaymentUtil;
+import com.epay.payment.util.enums.PaymentStatus;
+import com.epay.payment.validator.PaymentValidator;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import java.math.BigDecimal;
+import java.util.List;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+@ExtendWith(MockitoExtension.class)
+class InbPaymentServiceTest {
+
+    @InjectMocks
+    private InbPaymentService inbPaymentService;
+
+    @Mock
+    private TransactionDao transactionDao;
+    
+    @Mock
+    private PaymentDao paymentDao;
+    
+    @Mock
+    private PaymentUtil paymentUtil;
+    
+    @Mock
+    private PaymentValidator paymentValidator;
+    
+    @Mock
+    private InbEncryptionDecryptionUtil inbEncryptionDecryptionUtil;
+
+    private PaymentRequest paymentRequest;
+    private TransactionDto transactionDto;
+    private PostingData postingData;
+
+    @BeforeEach
+    void setUp() {
+        paymentRequest = new PaymentRequest();
+        paymentRequest.setAtrn("ATRN123");
+
+        transactionDto = new TransactionDto();
+        transactionDto.setDebitAmt(BigDecimal.valueOf(500.00));
+
+        postingData = PostingData.builder()
+                .postURL("https://bank.com")
+                .data("encryptedData")
+                .key("keyValue")
+                .merchantCode("merchant123")
+                .atrn("ATRN123")
+                .build();
+    }
+
+    @Test
+    void testGenerateReqPayload_Success() {
+        when(transactionDao.getValidPaymentAckReq("ATRN123", PaymentStatus.BOOKED.toString()))
+                .thenReturn(transactionDto);
+
+        when(paymentUtil.createWebRequest("ATRN123", transactionDto.getDebitAmt()))
+                .thenReturn("plainWebRequestData");
+
+        when(inbEncryptionDecryptionUtil.encryptedPostedData("plainWebRequestData", "ATRN123"))
+                .thenReturn(postingData);
+
+        PaymentResponse<PostingData> response = inbPaymentService.generateReqPayload(paymentRequest);
+
+        assertNotNull(response);
+        assertEquals(1, response.getStatus());
+        assertEquals(1L, response.getCount());
+        assertEquals(1L, response.getSize());
+        assertEquals(1, response.getData().size());
+        assertEquals("encryptedData", response.getData().get(0).getData());
+
+        verify(paymentValidator, times(1)).validateDebitAmount(transactionDto.getDebitAmt());
+        verify(paymentDao, times(1)).saveRequestLog("plainWebRequestData", "ATRN123",
+                "WEB_REQUEST_TYPE", "CREATED_BY");
+    }
+
+    @Test
+    void testGenerateReqPayload_ThrowsException_WhenTransactionNotFound() {
+        when(transactionDao.getValidPaymentAckReq("ATRN123", PaymentStatus.BOOKED.toString()))
+                .thenThrow(new RuntimeException("Transaction not found"));
+
+        Exception exception = assertThrows(RuntimeException.class, 
+            () -> inbPaymentService.generateReqPayload(paymentRequest));
+
+        assertEquals("Transaction not found", exception.getMessage());
+    }
+}
