@@ -1,5 +1,5 @@
-
 package com.epay.transaction.externalservice;
+
 /*
  * Copyright (c) [2024] [State Bank of India]
  * All rights reserved.
@@ -9,53 +9,41 @@ package com.epay.transaction.externalservice;
  */
 
 import com.epay.transaction.client.ApiClient;
-import com.epay.transaction.externalservice.request.kms.KMSAPIKeyValidationRequest;
-import com.epay.transaction.externalservice.response.kms.KMSEncryptionKeysResponse;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.externalservice.request.merchant.UserValidationRequest;
+import com.epay.transaction.externalservice.response.merchant.MerchantThemeResponse;
 import com.epay.transaction.model.response.TransactionResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.epay.transaction.util.TransactionErrorConstants;
 import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
+import reactor.core.publisher.Mono;
 
-public class KmsServicesClient extends ApiClient {
+import java.net.URI;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(KmsServicesClient.class);
+public class MerchantServicesClient extends ApiClient {
+    public static final String TOKEN_VALIDATION = "/validation/token";
+    public static final String MERCHANT_VALIDATION = "/validation/user";
+    public static final String PAYMENT_THEME = "/paymenttheme/";
 
-    public static final String GET_ENCRYPTION_KEY = "/key/encryption/";
-    public static final String API_KEY_VALIDATION = "/key/validated/api";
-
-    public KmsServicesClient(String baseUrl) {
+    public MerchantServicesClient(String baseUrl) {
         super(baseUrl);
     }
 
-    /**
-     * Validates the merchant API key ID and secret.
-     *
-     * @param merchantApiKeyId    The merchant's API key ID.
-     * @param merchantApiKeySecret The merchant's API key secret.
-     * @return TransactionResponse<String> containing the validation result.
-     */
-    public TransactionResponse<String> validateAPIKeyIdAndSecret(String merchantApiKeyId, String merchantApiKeySecret) {
-        LOGGER.info("Validating API Key ID and Secret for Merchant API Key ID: {}", merchantApiKeyId);
-        TransactionResponse<String> response = post(API_KEY_VALIDATION, 
-            KMSAPIKeyValidationRequest.builder()
-                .apiKey(merchantApiKeyId)
-                .apiKeySecret(merchantApiKeySecret)
-                .build(), 
-            new ParameterizedTypeReference<>() {});
-        LOGGER.info("Validation response received for Merchant API Key ID: {}", merchantApiKeyId);
-        return response;
+    public TransactionResponse<Void> validateMerchantToken(String token) {
+        HttpHeaders headers = prepareHttpHeaders();
+        headers.set(HttpHeaders.AUTHORIZATION, token);
+        URI uri = URI.create(getBaseUrl() + TOKEN_VALIDATION);
+        return getWebClient().get().uri(uri).headers(httpHeaders -> httpHeaders.addAll(headers)).retrieve().onStatus(httpStatusCode -> httpStatusCode.is4xxClientError() || httpStatusCode.is5xxServerError(), clientResponse -> Mono.error(new TransactionException(TransactionErrorConstants.EXTERNAL_SERVICE_ERROR_CODE, TransactionErrorConstants.EXTERNAL_SERVICE_ERROR_MESSAGE))).bodyToMono(new ParameterizedTypeReference<TransactionResponse<Void>>() {
+        }).block();
     }
 
-    /**
-     * Retrieves the encryption key for a given merchant ID.
-     *
-     * @param mId The merchant ID.
-     * @return TransactionResponse<KMSEncryptionKeysResponse> containing the encryption key details.
-     */
-    public TransactionResponse<KMSEncryptionKeysResponse> getEncryptionKeys(String mId) {
-        LOGGER.info("Fetching encryption keys for Merchant ID: {}", mId);
-        TransactionResponse<KMSEncryptionKeysResponse> response = get(GET_ENCRYPTION_KEY + mId, new ParameterizedTypeReference<>() {});
-        LOGGER.info("Encryption key response received for Merchant ID: {}", mId);
-        return response;
+    public TransactionResponse<String> validateMerchantUser(UserValidationRequest userValidationRequest) {
+        return post(MERCHANT_VALIDATION, userValidationRequest, new ParameterizedTypeReference<>() {});
     }
+
+    public TransactionResponse<MerchantThemeResponse> getMerchantPaymentTheme(String mId) {
+        return get(PAYMENT_THEME + mId,new ParameterizedTypeReference<>() {});
+    }
+
+
 }
