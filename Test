@@ -1,1 +1,68 @@
 
+/**
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author: @V0000001 (Shilpa Kothre)
+ * Version: 1.0
+ */
+
+package com.epay.transaction.repository;
+
+import com.epay.transaction.entity.Token;
+import com.epay.transaction.util.enums.TokenStatus;
+import com.sbi.epay.authentication.util.enums.TokenType;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+@Repository
+public interface TokenRepository extends JpaRepository<Token, UUID> {
+
+    Logger logger = LoggerFactory.getLogger(TokenRepository.class);
+
+    /**
+     * Retrieves the latest valid access token for a given merchant ID.
+     * The token must be active and not expired.
+     *
+     * @param mId              The merchant ID.
+     * @param currentTimestamp The current timestamp to check token validity.
+     * @return An optional containing the latest valid token, if available.
+     */
+    @Query(""" 
+              SELECT t FROM Token t
+               WHERE t.tokenType = ACCESS AND t.status = ACTIVE AND t.mId = :mId AND t.tokenExpiryTime > :currentTimestamp
+                ORDER BY t.tokenExpiryTime DESC LIMIT 1
+            """)
+    Optional<Token> findLatestValidToken(@Param("mId") String mId, @Param("currentTimestamp") Long currentTimestamp);
+
+    /**
+     * Retrieves the latest transaction token associated with a given order hash.
+     *
+     * @param orderHash The hash of the order.
+     * @return An optional containing the token, if found.
+     */
+    @Query(""" 
+              SELECT t FROM Token t WHERE t.tokenType = TRANSACTION AND  t.orderHash = :orderHash ORDER BY t.tokenExpiryTime DESC LIMIT 1
+            """)
+    Optional<Token> findByOrderHash(@Param("orderHash") String orderHash);
+
+    /**
+     * Finds a token by its generated value, status, and validity flag.
+     *
+     * @param generatedToken The generated token value.
+     * @param status         The token status.
+     * @param isTokenValid   Indicates whether the token is valid.
+     * @return An optional containing the matching token, if available.
+     */
+    Optional<Token> findByGeneratedTokenAndStatusAndIsTokenValid(String generatedToken, TokenStatus status, boolean isTokenValid);
+
+    /**
+     * Retrieves all expired
