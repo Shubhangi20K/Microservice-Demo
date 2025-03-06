@@ -1,102 +1,106 @@
+package com.epay.transaction.externalservice;
 
-package com.epay.payment.service;
+/*
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author: @V0000001 (Shilpa Kothre)
+ * Version: 1.0
+ */
 
-import com.epay.payment.dao.PaymentDao;
-import com.epay.payment.dao.TransactionDao;
-import com.epay.payment.dto.TransactionDto;
-import com.epay.payment.entity.PostingData;
-import com.epay.payment.model.request.PaymentRequest;
-import com.epay.payment.model.response.PaymentResponse;
-import com.epay.payment.util.InbEncryptionDecryptionUtil;
-import com.epay.payment.util.PaymentUtil;
-import com.epay.payment.util.enums.PaymentStatus;
-import com.epay.payment.validator.PaymentValidator;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import java.math.BigDecimal;
-import java.util.List;
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+import com.epay.transaction.client.ApiClient;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.externalservice.request.merchant.UserValidationRequest;
+import com.epay.transaction.externalservice.response.merchant.MerchantThemeResponse;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.util.TransactionErrorConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
+import reactor.core.publisher.Mono;
 
-@ExtendWith(MockitoExtension.class)
-class InbPaymentServiceTest {
+import java.net.URI;
 
-    @InjectMocks
-    private InbPaymentService inbPaymentService;
+public class MerchantServicesClient extends ApiClient {
+    private static final Logger logger = LoggerFactory.getLogger(MerchantServicesClient.class);
 
-    @Mock
-    private TransactionDao transactionDao;
-    
-    @Mock
-    private PaymentDao paymentDao;
-    
-    @Mock
-    private PaymentUtil paymentUtil;
-    
-    @Mock
-    private PaymentValidator paymentValidator;
-    
-    @Mock
-    private InbEncryptionDecryptionUtil inbEncryptionDecryptionUtil;
+    public static final String TOKEN_VALIDATION = "/validation/token";
+    public static final String MERCHANT_VALIDATION = "/validation/user";
+    public static final String PAYMENT_THEME = "/paymenttheme/";
 
-    private PaymentRequest paymentRequest;
-    private TransactionDto transactionDto;
-    private PostingData postingData;
-
-    @BeforeEach
-    void setUp() {
-        paymentRequest = new PaymentRequest();
-        paymentRequest.setAtrn("ATRN123");
-
-        transactionDto = new TransactionDto();
-        transactionDto.setDebitAmt(BigDecimal.valueOf(500.00));
-
-        postingData = PostingData.builder()
-                .postURL("https://bank.com")
-                .data("encryptedData")
-                .key("keyValue")
-                .merchantCode("merchant123")
-                .atrn("ATRN123")
-                .build();
+    public MerchantServicesClient(String baseUrl) {
+        super(baseUrl);
     }
 
-    @Test
-    void testGenerateReqPayload_Success() {
-        when(transactionDao.getValidPaymentAckReq("ATRN123", PaymentStatus.BOOKED.toString()))
-                .thenReturn(transactionDto);
+    /**
+     * Validates the merchant token by making a GET request to the external service.
+     *
+     * @param token The merchant token to be validated.
+     * @return TransactionResponse<Void> indicating success or failure.
+     */
+    public TransactionResponse<Void> validateMerchantToken(String token) {
+        logger.info("Validating merchant token...");
+        
+        HttpHeaders headers = prepareHttpHeaders();
+        headers.set(HttpHeaders.AUTHORIZATION, token);
+        URI uri = URI.create(getBaseUrl() + TOKEN_VALIDATION);
 
-        when(paymentUtil.createWebRequest("ATRN123", transactionDto.getDebitAmt()))
-                .thenReturn("plainWebRequestData");
-
-        when(inbEncryptionDecryptionUtil.encryptedPostedData("plainWebRequestData", "ATRN123"))
-                .thenReturn(postingData);
-
-        PaymentResponse<PostingData> response = inbPaymentService.generateReqPayload(paymentRequest);
-
-        assertNotNull(response);
-        assertEquals(1, response.getStatus());
-        assertEquals(1L, response.getCount());
-        assertEquals(1L, response.getSize());
-        assertEquals(1, response.getData().size());
-        assertEquals("encryptedData", response.getData().get(0).getData());
-
-        verify(paymentValidator, times(1)).validateDebitAmount(transactionDto.getDebitAmt());
-        verify(paymentDao, times(1)).saveRequestLog("plainWebRequestData", "ATRN123",
-                "WEB_REQUEST_TYPE", "CREATED_BY");
+        try {
+            return getWebClient()
+                .get()
+                .uri(uri)
+                .headers(httpHeaders -> httpHeaders.addAll(headers))
+                .retrieve()
+                .onStatus(
+                    httpStatusCode -> httpStatusCode.is4xxClientError() || httpStatusCode.is5xxServerError(),
+                    clientResponse -> {
+                        logger.error("Error while validating merchant token. HTTP Status: {}", clientResponse.statusCode());
+                        return Mono.error(new TransactionException(
+                            TransactionErrorConstants.EXTERNAL_SERVICE_ERROR_CODE,
+                            TransactionErrorConstants.EXTERNAL_SERVICE_ERROR_MESSAGE
+                        ));
+                    }
+                )
+                .bodyToMono(new ParameterizedTypeReference<TransactionResponse<Void>>() {})
+                .block();
+        } catch (Exception e) {
+            logger.error("Exception occurred while validating merchant token", e);
+            throw e;
+        }
     }
 
-    @Test
-    void testGenerateReqPayload_ThrowsException_WhenTransactionNotFound() {
-        when(transactionDao.getValidPaymentAckReq("ATRN123", PaymentStatus.BOOKED.toString()))
-                .thenThrow(new RuntimeException("Transaction not found"));
+    /**
+     * Validates a merchant user based on the provided user validation request.
+     *
+     * @param userValidationRequest The request object containing user validation details.
+     * @return TransactionResponse<String> containing validation results.
+     */
+    public TransactionResponse<String> validateMerchantUser(UserValidationRequest userValidationRequest) {
+        logger.info("Validating merchant user with request: {}", userValidationRequest);
 
-        Exception exception = assertThrows(RuntimeException.class, 
-            () -> inbPaymentService.generateReqPayload(paymentRequest));
+        try {
+            return post(MERCHANT_VALIDATION, userValidationRequest, new ParameterizedTypeReference<>() {});
+        } catch (Exception e) {
+            logger.error("Exception occurred while validating merchant user", e);
+            throw e;
+        }
+    }
 
-        assertEquals("Transaction not found", exception.getMessage());
+    /**
+     * Retrieves the merchant's payment theme based on the provided merchant ID.
+     *
+     * @param mId The merchant ID.
+     * @return TransactionResponse<MerchantThemeResponse> containing theme details.
+     */
+    public TransactionResponse<MerchantThemeResponse> getMerchantPaymentTheme(String mId) {
+        logger.info("Fetching payment theme for merchant ID: {}", mId);
+
+        try {
+            return get(PAYMENT_THEME + mId, new ParameterizedTypeReference<>() {});
+        } catch (Exception e) {
+            logger.error("Exception occurred while fetching merchant payment theme", e);
+            throw e;
+        }
     }
 }
