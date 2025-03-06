@@ -1,129 +1,170 @@
 package com.epay.transaction.externalservice;
 
-import com.epay.transaction.client.ApiClient;
-import com.epay.transaction.externalservice.request.payment.*;
-import com.epay.transaction.externalservice.response.payment.*;
-import com.epay.transaction.model.response.TransactionResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.core.ParameterizedTypeReference;
+import com.epay.transaction.config.S3Config;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.util.TransactionErrorConstants;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.core.ResponseBytes;
+import software.amazon.awssdk.core.ResponseInputStream;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.*;
+
+import java.io.File;
+import java.io.IOException;
+import java.text.MessageFormat;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
- * Class Name: PaymentServicesClient
- * 
- * Description: This class acts as a client service to interact with different payment-related APIs, 
- * such as UPI, INB, card authentication, and QR-based payments. It extends the ApiClient and provides 
- * methods to initiate and validate payment transactions.
- * 
- * Author: V1014352 (Ranjan Kumar)
- * 
- * Copyright (c) 2025 [State Bank of India]
- * All rights reserved.
- * 
+ * Class Name: S3Service
+ * Description: The S3Service class provides functionalities to interact with AWS S3 for uploading, downloading, and listing files.
+ * It supports uploading files as a File, byte array, or MultipartFile, and handles the S3 client operations like put, get, and list objects.
+ * It also provides error handling, logging, and custom exception throwing in case of S3 operation failures.
+ * Author: Bhoopendra Rajput
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
  * Version: 1.0
  */
-public class PaymentServicesClient extends ApiClient {
+@RequiredArgsConstructor
+@Service
+public class S3Service {
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+    private final S3Config s3Config;
+    private final S3Client s3Client;
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(PaymentServicesClient.class);
-
-    public static final String VPA_API_ENDPOINT = "/sbi/upi/vpa/validate-vpa";
-    public static final String INB_API_ENDPOINT = "/sbi/inb/initiate";
-    public static final String OTHER_INB_API_ENDPOINT = "/otherInbService/initiate";
-    public static final String VISA_MASTER_CARD_API_ENDPOINT = "/initiation/cardauthentication/visamaster";
-    public static final String RUPAY_CARD_API_ENDPOINT = "/initiation/cardauthentication/rupay";
-    public static final String UPI_VPA_ENDPOINT = "/sbi/upi/vpa/collect";
-    public static final String UPI_QR_ENDPOINT = "/sbi/upi/qr/sign";
-    public static final String GET_UPI_STATUS_DETAILS = "/sbi/upi/vpa/txn/status";
-
-    public PaymentServicesClient(String baseUrl) {
-        super(baseUrl);
+    /**
+     * Uploads a file to S3 using the provided File object.
+     *
+     * @param file the file to upload
+     * @return the S3 key for the uploaded file
+     */
+    public String uploadFile(File file) {
+        String key = System.currentTimeMillis() + "-" + file.getName();
+        try {
+            PutObjectRequest objectRequest = PutObjectRequest.builder().bucket(s3Config.getBucket()).key(file.getName()).build();
+            s3Client.putObject(objectRequest, RequestBody.fromFile(file));
+            return key;
+        } catch (S3Exception e) {
+            log.error(TransactionErrorConstants.S3_UPLOAD_FAILED, key, e.getMessage());
+            throw new TransactionException(TransactionErrorConstants.GENERIC_ERROR_CODE, e.getMessage());
+        }
     }
 
     /**
-     * Validates a UPI payment VPA (Virtual Payment Address).
-     * 
-     * @param paymentRequest the payment request containing VPA details
-     * @return transaction response with validation details
+     * Uploads a file to S3 using byte array content.
+     *
+     * @param fileName    the name of the file
+     * @param fileContent the content of the file as byte array
+     * @return the S3 key for the uploaded file
      */
-    public TransactionResponse<PaymentUPIVpaResponse> validateUPIPaymentVpa(PaymentUPIVpaRequest paymentRequest) {
-        LOGGER.info("Validating UPI VPA payment request: {}", paymentRequest);
-        return post(VPA_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<TransactionResponse<PaymentUPIVpaResponse>>() {});
+    public String uploadFile(String fileName, byte[] fileContent) {
+        String key = System.currentTimeMillis() + "-" + fileName;
+        try {
+            PutObjectRequest objectRequest = PutObjectRequest.builder().bucket(s3Config.getBucket()).key(key).build();
+            s3Client.putObject(objectRequest, RequestBody.fromBytes(fileContent));
+            return key;
+        } catch (S3Exception e) {
+            log.error(TransactionErrorConstants.S3_UPLOAD_FAILED, key, e.getMessage());
+            throw new TransactionException(TransactionErrorConstants.GENERIC_ERROR_CODE, e.getMessage());
+        }
     }
 
     /**
-     * Initiates an INB (Internet Banking) payment for other banks.
-     * 
-     * @param paymentRequest the INB payment request
-     * @return transaction response for the INB payment
+     * @param file MultipartFile
+     * @return File name
      */
-    public TransactionResponse<PaymentOtherInbResponse> initiateOtherINBPayments(PaymentOtherINBReqest paymentRequest) {
-        LOGGER.info("Initiating Other INB payment request: {}", paymentRequest);
-        return post(OTHER_INB_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<TransactionResponse<PaymentOtherInbResponse>>() {});
+    public String uploadFile(MultipartFile file) {
+        String key = System.currentTimeMillis() + "-" + file.getName();
+        try {
+            PutObjectRequest objectRequest = PutObjectRequest.builder()
+                    .bucket(s3Config.getBucket())
+                    .key(key)
+                    .contentType(file.getContentType())
+                    .contentLength(file.getSize())
+                    .build();
+            PutObjectResponse putObjectResponse = s3Client.putObject(objectRequest, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+            log.info("putObjectResponse: {}", putObjectResponse);
+            return key;
+        } catch (S3Exception | IOException e) {
+            log.error(TransactionErrorConstants.S3_UPLOAD_FAILED, key, e.getMessage());
+            throw new TransactionException(TransactionErrorConstants.GENERIC_ERROR_CODE, e.getMessage());
+        }
     }
 
     /**
-     * Initiates an SBI Internet Banking (INB) payment.
-     * 
-     * @param paymentRequest the SBI INB payment request
-     * @return transaction response for the SBI INB payment
+     * Download file content to HttpServletRepose.
+     *
+     * @param response HttpServletResponse
+     * @param fileName String
      */
-    public TransactionResponse<PaymentResponse> initiateSBIINBPayments(PaymentINBRequest paymentRequest) {
-        LOGGER.info("Initiating SBI INB payment request: {}", paymentRequest);
-        return post(INB_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
+    public void downloadFile(HttpServletResponse response, String fileName) {
+        try {
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(s3Config.getBucket()).key(fileName).build();
+            ResponseInputStream<GetObjectResponse> object = s3Client.getObject(getObjectRequest);
+            object.transferTo(response.getOutputStream());
+            response.getOutputStream().close();
+        } catch (S3Exception | IOException e) {
+            log.error("S3 - Failed to read file:{} from s3 with error: {}", fileName, e.getMessage());
+            Object[] messageArgs = {fileName};
+            throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, messageArgs));
+        }
     }
 
     /**
-     * Initiates a Visa or MasterCard payment authentication.
-     * 
-     * @param paymentRequest the card payment request
-     * @return transaction response with authentication details
+     * Return list of S3 uploaded file keys.
+     *
+     * @return List
      */
-    public TransactionResponse<PaymentVisaCardResponse> initiateVisaAndMasterCardAPI(PaymentCardRequest paymentRequest) {
-        LOGGER.info("Initiating Visa/MasterCard payment request: {}", paymentRequest);
-        return post(VISA_MASTER_CARD_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
+    public List<String> listObjects() {
+        List<String> fileList = new ArrayList<>();
+        try {
+            ListObjectsV2Request listObjectsV2Request = ListObjectsV2Request.builder()
+                    .bucket(s3Config.getBucket())
+                    .build();
+            log.info("s3Client : {}", s3Client);
+            log.info("listObjectsV2Request :{}", listObjectsV2Request);
+            ListObjectsV2Response listObjectsV2Response = s3Client.listObjectsV2(listObjectsV2Request);
+
+            listObjectsV2Response.contents().forEach(s3Object -> {
+                log.info("Object Key :{}", s3Object.key());
+                fileList.add(s3Object.toString());
+            });
+        } catch (S3Exception e) {
+            log.info("S3 - Failed to get list object from s3 with error: {}", e.getMessage());
+            throw new TransactionException(TransactionErrorConstants.GENERIC_ERROR_CODE, e.getMessage());
+        }
+        return fileList;
     }
 
     /**
-     * Initiates a Rupay card payment authentication.
-     * 
-     * @param paymentRequest the Rupay card payment request
-     * @return transaction response with authentication details
+     * Reads file content from s3
+     *
+     * @param key s3 file key
+     *
      */
-    public TransactionResponse<PaymentRupayCardResponse> initiateRupPayCardAPI(PaymentCardRequest paymentRequest) {
-        LOGGER.info("Initiating Rupay card payment request: {}", paymentRequest);
-        return post(RUPAY_CARD_API_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
+    public ResponseBytes<?> readFile(String key) {
+
+        ResponseBytes<?> file = null;
+
+        try {
+
+            GetObjectRequest getObjectRequest = GetObjectRequest.builder().bucket(s3Config.getBucket()).key(key).build();
+            file = s3Client.getObjectAsBytes(getObjectRequest);
+
+        } catch (S3Exception e) {
+            log.info("S3 - Failed to get list object from s3 with error: {}", e.getMessage());
+            throw new TransactionException(TransactionErrorConstants.GENERIC_ERROR_CODE, e.getMessage());
+        }
+
+        return file;
+
     }
 
-    /**
-     * Initiates a UPI payment using VPA.
-     * 
-     * @param paymentRequest the UPI payment request
-     * @return transaction response with UPI transaction details
-     */
-    public TransactionResponse<PaymentUPIVpaCollectGatewayResponse> initiateUPIVPAPayments(PaymentUPIRequest paymentRequest) {
-        LOGGER.info("Initiating UPI VPA payment request: {}", paymentRequest);
-        return post(UPI_VPA_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
-    }
 
-    /**
-     * Fetches the status of a UPI payment transaction.
-     * 
-     * @param paymentRequest the UPI payment status request
-     * @return transaction response with UPI transaction status
-     */
-    public TransactionResponse<PaymentUPIStatusResponse> upiPaymentStatusEnquiry(PaymentStatusRequest paymentRequest) {
-        LOGGER.info("Checking UPI payment status: {}", paymentRequest);
-        return post(GET_UPI_STATUS_DETAILS, paymentRequest, new ParameterizedTypeReference<>() {});
-    }
-
-    /**
-     * Initiates a UPI QR-based payment.
-     * 
-     * @param paymentRequest the UPI QR payment request
-     * @return transaction response with UPI QR transaction details
-     */
-    public TransactionResponse<PaymentQRResponse> initiateUPIQRPayments(PaymentUPIQRRequest paymentRequest) {
-        LOGGER.info("Initiating UPI QR payment request: {}", paymentRequest);
-        return post(UPI_QR_ENDPOINT, paymentRequest, new ParameterizedTypeReference<>() {});
-    }
 }
