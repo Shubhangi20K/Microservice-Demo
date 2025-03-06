@@ -1,1 +1,107 @@
 
+package com.epay.transaction.externalservice;
+
+/*
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author: @V0000001 (Shilpa Kothre)
+ * Version: 1.0
+ */
+
+import com.epay.transaction.client.ApiClient;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.externalservice.request.merchant.UserValidationRequest;
+import com.epay.transaction.externalservice.response.merchant.MerchantThemeResponse;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.util.TransactionErrorConstants;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpHeaders;
+import reactor.core.publisher.Mono;
+
+import java.net.URI;
+
+public class MerchantServicesClient extends ApiClient {
+    private static final Logger logger = LoggerFactory.getLogger(MerchantServicesClient.class);
+
+    public static final String TOKEN_VALIDATION = "/validation/token";
+    public static final String MERCHANT_VALIDATION = "/validation/user";
+    public static final String PAYMENT_THEME = "/paymenttheme/";
+
+    public MerchantServicesClient(String baseUrl) {
+        super(baseUrl);
+    }
+
+    /**
+     * Validates the merchant token by making a GET request to the external service.
+     *
+     * @param token The merchant token to be validated.
+     * @return TransactionResponse<Void> indicating success or failure.
+     */
+    public TransactionResponse<Void> validateMerchantToken(String token) {
+        logger.info("Validating merchant token...");
+        
+        HttpHeaders headers = prepareHttpHeaders();
+        headers.set(HttpHeaders.AUTHORIZATION, token);
+        URI uri = URI.create(getBaseUrl() + TOKEN_VALIDATION);
+
+        try {
+            return getWebClient()
+                .get()
+                .uri(uri)
+                .headers(httpHeaders -> httpHeaders.addAll(headers))
+                .retrieve()
+                .onStatus(
+                    httpStatusCode -> httpStatusCode.is4xxClientError() || httpStatusCode.is5xxServerError(),
+                    clientResponse -> {
+                        logger.error("Error while validating merchant token. HTTP Status: {}", clientResponse.statusCode());
+                        return Mono.error(new TransactionException(
+                            TransactionErrorConstants.EXTERNAL_SERVICE_ERROR_CODE,
+                            TransactionErrorConstants.EXTERNAL_SERVICE_ERROR_MESSAGE
+                        ));
+                    }
+                )
+                .bodyToMono(new ParameterizedTypeReference<TransactionResponse<Void>>() {})
+                .block();
+        } catch (Exception e) {
+            logger.error("Exception occurred while validating merchant token", e);
+            throw e;
+        }
+    }
+
+    /**
+     * Validates a merchant user based on the provided user validation request.
+     *
+     * @param userValidationRequest The request object containing user validation details.
+     * @return TransactionResponse<String> containing validation results.
+     */
+    public TransactionResponse<String> validateMerchantUser(UserValidationRequest userValidationRequest) {
+        logger.info("Validating merchant user with request: {}", userValidationRequest);
+
+        try {
+            return post(MERCHANT_VALIDATION, userValidationRequest, new ParameterizedTypeReference<>() {});
+        } catch (Exception e) {
+            logger.error("Exception occurred while validating merchant user", e);
+            throw e;
+        }
+    }
+
+    /**
+     * Retrieves the merchant's payment theme based on the provided merchant ID.
+     *
+     * @param mId The merchant ID.
+     * @return TransactionResponse<MerchantThemeResponse> containing theme details.
+     */
+    public TransactionResponse<MerchantThemeResponse> getMerchantPaymentTheme(String mId) {
+        logger.info("Fetching payment theme for merchant ID: {}", mId);
+
+        try {
+            return get(PAYMENT_THEME + mId, new ParameterizedTypeReference<>() {});
+        } catch (Exception e) {
+            logger.error("Exception occurred while fetching merchant payment theme", e);
+            throw e;
+        }
+    }
+}
