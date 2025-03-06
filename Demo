@@ -1,0 +1,129 @@
+
+package com.epay.payment.service;
+
+import com.epay.payment.config.InbConfigDeatils;
+import com.epay.payment.dao.*;
+import com.epay.payment.dto.NbMapWebResponseDto;
+import com.epay.payment.dto.TransactionDto;
+import com.epay.payment.entity.PostingData;
+import com.epay.payment.exceptions.PaymentException;
+import com.epay.payment.externalservice.PaymentWebClientService;
+import com.epay.payment.model.request.PaymentRequest;
+import com.epay.payment.model.response.PaymentResponse;
+import com.epay.payment.util.InbEncryptionDecryptionUtil;
+import com.epay.payment.util.InbErrorConstants;
+import com.epay.payment.util.PaymentConstants;
+import com.epay.payment.util.PaymentUtil;
+import com.epay.payment.util.enums.PaymentStatus;
+import com.epay.payment.validator.PaymentValidator;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.web.servlet.view.RedirectView;
+import java.text.MessageFormat;
+import java.util.List;
+import java.util.Optional;
+
+/**
+ * Class Name:NbPaymentService
+ * *
+ * Description:
+ * *
+ * Author:VCE2645(Siddhesh Nikam)
+ * <p>
+ * Copyright (c) 2024 [State Bank of India]
+ * All right reserved
+ * *
+ * Version:1.0
+ */
+
+@RequiredArgsConstructor
+@Service
+public class InbPaymentService {
+
+    LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final PaymentUtil paymentUtil;
+    private final TransactionDao transactionDao;
+    private final PaymentDao paymentDao;
+    private  final InbEncryptionDecryptionUtil inbEncryptionDecryptionUtil;
+    private final PaymentValidator paymentValidator;
+    private final InbConfigDeatils inbConfigDeatils;
+    private final NbPaymentDao nbPaymentDao;
+    private final StatusUpdatePaymentDao statusUpdatePaymentDao;
+    private final PaymentWebClientService paymentWebClientService;
+
+    /**
+     * @return -JSON : PaymentResponse<PostingData> (1.postURL, 2.data, 3.Key, 4.merchantCode)
+     * @methodName: Generate Web Request Payload.
+     * @@Method-Description: The purpose of this method is to create web request and encrypt request.
+     * @param: generateReqPayload
+     * @Exception or @Error :Exception
+     */
+    public PaymentResponse<PostingData> generateReqPayload(PaymentRequest paymentWebRequest) {
+        logger.info("Payment Initiation Start for Atrn {} ", paymentWebRequest.getAtrn());
+        TransactionDto transactionDto = transactionDao.getValidPaymentAckReq(paymentWebRequest.getAtrn(), PaymentStatus.BOOKED.toString());
+        logger.info("Payment Initiation get atrn details {} ", transactionDto);
+        paymentValidator.validateDebitAmount(transactionDto.getDebitAmt());
+        String  planeTextWebReqData = paymentUtil.createWebRequest(paymentWebRequest.getAtrn(), transactionDto.getDebitAmt());
+        logger.info("Payment Initiation Plane Text Web Request {} , and ATRN {}", planeTextWebReqData,paymentWebRequest.getAtrn());
+        paymentDao.saveRequestLog(planeTextWebReqData,paymentWebRequest.getAtrn(), PaymentConstants.WEB_REQUEST_TYPE,PaymentConstants.CREATED_BY);
+        PostingData encryptedPostedData = inbEncryptionDecryptionUtil.encryptedPostedData(planeTextWebReqData,paymentWebRequest.getAtrn());
+        logger.info("Payment Initiation Encrypted Web Request {} , and ATRN {}", encryptedPostedData.getData(),paymentWebRequest.getAtrn());
+        return PaymentResponse.<PostingData>builder().status(1).count(1L).size(1L).data(List.of(encryptedPostedData)).build();
+    }
+
+    /**
+     * @return -JSON : RedirectView
+     * @methodName: Process Web Response Payload.
+     * @@Method-Description: The purpose of this method is to Process Web Response Payload.
+     * @param: processWebResponsePayload
+     * @Exception or @Error :Exception
+     */
+    public RedirectView processWebResponsePayload(String webResponse) {
+        logger.info("Payment Callback Encrypted Web Response {} ", webResponse);
+        RedirectView redirectView=new RedirectView();
+        // Decrypt Web response
+        String  decryptedWebResponse=
+                Optional.ofNullable(inbEncryptionDecryptionUtil.decrypt(webResponse
+                                .replaceAll(PaymentConstants.NEW_LINE_REGEX, PaymentConstants.PATTERN_EMPTY)
+                                .replace(PaymentConstants.PATTERN_SPACE,PaymentConstants.PATTERN_EMPTY)))
+                                .filter(x->!x.isEmpty())
+                                .orElseThrow(()->new PaymentException(InbErrorConstants.WEB_RESPONSE_ERROR_CODE, InbErrorConstants.WEB_RESPONSE_ERROR_MESSAGE));
+        logger.info("Payment Callback Decrypted Web Response {} ", decryptedWebResponse);
+        NbMapWebResponseDto nbMapWebResponseDto =
+                new ObjectMapper()
+                        .convertValue(paymentUtil
+                                .getDecryptedData(decryptedWebResponse), NbMapWebResponseDto.class);
+        // Save Web response in DB
+        paymentDao.saveResponseLog(decryptedWebResponse,nbMapWebResponseDto.getTxnrefNo(),nbMapWebResponseDto.getSbirefNo(),PaymentConstants.WEB_RESPONSE_TYPE,PaymentConstants.CREATED_BY);
+
+        if (!paymentValidator.checkSum(nbMapWebResponseDto.getCheckSum() , (inbEncryptionDecryptionUtil.getSHA2Checksum(MessageFormat
+                .format(PaymentConstants.SBIINB_WEB_CHECKSUM,nbMapWebResponseDto.getSbirefNo(),nbMapWebResponseDto.getAmount(),nbMapWebResponseDto.getTxnrefNo(), nbMapWebResponseDto.getStatus(),nbMapWebResponseDto.getStatus_desc()))))){
+            statusUpdatePaymentDao.paymentFailureStatusUpdate(nbMapWebResponseDto.getTxnrefNo(), nbMapWebResponseDto.getSbirefNo(), nbMapWebResponseDto.getStatus(), PaymentConstants.SBI_NET_BANKING);
+            throw new PaymentException(InbErrorConstants.WEB_CHECKSUM_ERROR_CODE, InbErrorConstants.WEB_CHECKSUM_MISMATCH_ERROR_MESSAGE);
+        }
+
+        switch (nbMapWebResponseDto.getStatus()) {
+            case PaymentConstants.SUCCESS_CONST, PaymentConstants.PENDING_CONST -> {
+                String dvRequestString = nbPaymentDao.processOtherInbDoubleVerRequest(nbMapWebResponseDto);
+                logger.info("Payment Callback Plan DV Request for SBIINB {} " + dvRequestString);
+
+                String inbDvResponse = paymentWebClientService.processingDoubleVerRequest(dvRequestString);
+                logger.info("Payment Callback Plan DV Response for SBIINB {} " + inbDvResponse);
+
+                NbMapWebResponseDto nbMapDVResponseDto = new ObjectMapper().convertValue(paymentUtil.getDecryptedData(inbDvResponse.trim()), NbMapWebResponseDto.class);
+                logger.info("Payment Callback nbMapDVResponseDto {} " + nbMapDVResponseDto);
+
+                nbMapWebResponseDto = nbPaymentDao.processNbDoubleVerRequest(nbMapWebResponseDto,nbMapDVResponseDto,inbDvResponse);
+                logger.info("Payment Callback nbMapWebResponseDto is {} ",nbMapWebResponseDto);
+            }
+            default -> statusUpdatePaymentDao.paymentFailureStatusUpdate(nbMapWebResponseDto.getTxnrefNo(), nbMapWebResponseDto.getSbirefNo(), nbMapWebResponseDto.getStatus(), PaymentConstants.SBI_NET_BANKING);
+        }
+        //Redirecting to Browser.
+        redirectView.setUrl(inbConfigDeatils.getRedirectUrl().concat(nbMapWebResponseDto.getStatus() == null ? PaymentConstants.FAILURE : nbMapWebResponseDto.getStatus().toLowerCase()).concat(PaymentConstants.FORWARDSLASH).concat(nbMapWebResponseDto.getTxnrefNo() == null ? PaymentConstants.NA : nbMapWebResponseDto.getTxnrefNo()));
+        logger.debug("Redirecting to Web Page {} ",redirectView);
+        return redirectView;
+    }
+}
