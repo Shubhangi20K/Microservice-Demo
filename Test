@@ -1,58 +1,45 @@
-
-
 package com.epay.transaction.externalservice;
-
-import com.epay.transaction.client.ApiClient;
-import com.epay.transaction.model.response.TransactionResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.core.ParameterizedTypeReference;
-
-/**
+/*
  * Copyright (c) [2024] [State Bank of India]
  * All rights reserved.
  * <p>
- * Author: @V0000001 (Shubhangi Kurelay)
- * Version: 1.0
- * <p>
- * This class provides external integration services for fetching GST details and E-commerce flag status
- * using the EIS (External Integration Service).
+ * Author:@V0000001(Shilpa Kothre)
+ * Version:1.0
  */
-public class EISServicesClient extends ApiClient {
 
-    private static final Logger logger = LoggerFactory.getLogger(EISServicesClient.class);
+import com.epay.transaction.client.ApiClient;
+import com.epay.transaction.externalservice.request.kms.KMSAPIKeyValidationRequest;
+import com.epay.transaction.externalservice.response.kms.KMSEncryptionKeysResponse;
+import com.epay.transaction.model.response.TransactionResponse;
+import org.springframework.core.ParameterizedTypeReference;
 
-    public static final String GST_IN = "/fetchGST/details";
-    public static final String ECOM_FLAG = "/ecomflag";
 
-    /**
-     * Constructor to initialize EISServicesClient with a base URL.
-     *
-     * @param baseUrl the base URL for external service API calls
-     */
-    public EISServicesClient(String baseUrl) {
+public class KmsServicesClient extends ApiClient {
+
+    public static final String GET_ENCRYPTION_KEY = "/key/encryption/";
+    public static final String API_KEY_VALIDATION = "/key/validated/api";
+
+    public KmsServicesClient(String baseUrl) {
         super(baseUrl);
     }
 
     /**
-     * Retrieves the E-commerce flag status for a given card number.
+     * It will validate the Merchant key passed in the request
      *
-     * @param cardNumber the card number to fetch the E-commerce flag for
-     * @return a {@link TransactionResponse} containing the E-commerce flag status
+     * @return TransactionResponse
      */
-    public TransactionResponse<String> getECOMFlag(String cardNumber) {
-        logger.info("Fetching ECOM flag for card number: {}", cardNumber);
-        return post(ECOM_FLAG, cardNumber, new ParameterizedTypeReference<>() {});
+    public TransactionResponse<String> validateAPIKeyIdAndSecret(String merchantApiKeyId, String merchantApiKeySecret) {
+        return post(API_KEY_VALIDATION, KMSAPIKeyValidationRequest.builder().apiKey(merchantApiKeyId).apiKeySecret(merchantApiKeySecret).build(), new ParameterizedTypeReference<>() {});
     }
 
+
     /**
-     * Retrieves GST details for a given card number.
+     * Get Encryption Key Request
      *
-     * @param cardNumber the card number to fetch GST details for
-     * @return a {@link TransactionResponse} containing the GST details
+     * @param mId String
+     * @return KMSEncryptionKeysResponse
      */
-    public TransactionResponse<String> getGstInDetails(String cardNumber) {
-        logger.info("Fetching GST details for card number: {}", cardNumber);
-        return post(GST_IN, cardNumber, new ParameterizedTypeReference<>() {});
+    public TransactionResponse<KMSEncryptionKeysResponse> getEncryptionKeys(String mId) {
+        return get(GET_ENCRYPTION_KEY + mId, new ParameterizedTypeReference<>() {});
     }
 }
