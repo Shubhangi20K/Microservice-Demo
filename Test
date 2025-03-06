@@ -1,116 +1,28 @@
-
-
-Here's your updated TokenRepository interface with method comments and a logger added below the class declaration:
-
-Updated Code:
+package com.epay.transaction.mapper;
 
 /**
  * Copyright (c) [2024] [State Bank of India]
  * All rights reserved.
  * <p>
- * Author: @V0000001 (Shilpa Kothre)
- * Version: 1.0
+ * Author:@V0000001(Shilpa Kothre)
+ * Version:1.0
  */
 
-package com.epay.transaction.repository;
 
+import com.epay.transaction.dto.TokenDto;
+import com.epay.transaction.dto.booking.DeviceDetailsDto;
 import com.epay.transaction.entity.Token;
-import com.epay.transaction.util.enums.TokenStatus;
-import com.sbi.epay.authentication.util.enums.TokenType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
+import com.epay.transaction.entity.TransactionDeviceInfo;
+import org.mapstruct.Builder;
+import org.mapstruct.Mapper;
 
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+@Mapper(builder = @Builder(disableBuilder = true), componentModel = "spring")
+public interface TokenMapper {
 
-@Repository
-public interface TokenRepository extends JpaRepository<Token, UUID> {
+    Token dtoToEntity(TokenDto tokenDto);
 
-    Logger logger = LoggerFactory.getLogger(TokenRepository.class);
+    TokenDto entityToDto(Token token);
 
-    /**
-     * Retrieves the latest valid access token for a given merchant ID.
-     * The token must be active and not expired.
-     *
-     * @param mId              The merchant ID.
-     * @param currentTimestamp The current timestamp to check token validity.
-     * @return An optional containing the latest valid token, if available.
-     */
-    @Query(""" 
-              SELECT t FROM Token t
-               WHERE t.tokenType = ACCESS AND t.status = ACTIVE AND t.mId = :mId AND t.tokenExpiryTime > :currentTimestamp
-                ORDER BY t.tokenExpiryTime DESC LIMIT 1
-            """)
-    Optional<Token> findLatestValidToken(@Param("mId") String mId, @Param("currentTimestamp") Long currentTimestamp);
-
-    /**
-     * Retrieves the latest transaction token associated with a given order hash.
-     *
-     * @param orderHash The hash of the order.
-     * @return An optional containing the token, if found.
-     */
-    @Query(""" 
-              SELECT t FROM Token t WHERE t.tokenType = TRANSACTION AND  t.orderHash = :orderHash ORDER BY t.tokenExpiryTime DESC LIMIT 1
-            """)
-    Optional<Token> findByOrderHash(@Param("orderHash") String orderHash);
-
-    /**
-     * Finds a token by its generated value, status, and validity flag.
-     *
-     * @param generatedToken The generated token value.
-     * @param status         The token status.
-     * @param isTokenValid   Indicates whether the token is valid.
-     * @return An optional containing the matching token, if available.
-     */
-    Optional<Token> findByGeneratedTokenAndStatusAndIsTokenValid(String generatedToken, TokenStatus status, boolean isTokenValid);
-
-    /**
-     * Retrieves all expired tokens based on status and expiration time.
-     *
-     * @param status          The token status.
-     * @param currentTimeStamp The current timestamp for comparison.
-     * @return A list of expired tokens.
-     */
-    List<Token> findByStatusAndTokenExpiryTimeLessThan(TokenStatus status, Long currentTimeStamp);
-
-    /**
-     * Checks if a token exists with the given attributes.
-     *
-     * @param generatedToken The generated token value.
-     * @param tokenType      The token type.
-     * @param status         The token status.
-     * @param isTokenValid   Indicates whether the token is valid.
-     * @return True if such a token exists, otherwise false.
-     */
-    boolean existsByGeneratedTokenAndTokenTypeAndStatusAndIsTokenValid(String generatedToken, TokenType tokenType, TokenStatus status, boolean isTokenValid);
-
-    /**
-     * Finds a token by its generated value and status.
-     *
-     * @param generatedToken The generated token value.
-     * @param status         The token status.
-     * @return An optional containing the matching token, if available.
-     */
-    Optional<Token> findByGeneratedTokenAndStatus(String generatedToken, TokenStatus status);
+    TransactionDeviceInfo dtoToEntity(DeviceDetailsDto deviceDetailsDto);
 
 }
-
-Changes & Improvements:
-
-1. Added method-level comments for better understanding of each method's purpose.
-
-
-2. Added a logger (LoggerFactory.getLogger(TokenRepository.class);) to enable logging if needed in the future.
-
-
-3. Formatted queries properly and added missing JavaDoc annotations where necessary.
-
-
-
-Let me know if you need any modifications!
-
