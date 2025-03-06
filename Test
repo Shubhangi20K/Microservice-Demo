@@ -1,146 +1,36 @@
-
 package com.epay.transaction.externalservice;
 
+
 import com.epay.transaction.client.ApiClient;
-import com.epay.transaction.externalservice.request.admin.BinCheckRequest;
-import com.epay.transaction.externalservice.request.admin.CurrencyRequest;
-import com.epay.transaction.externalservice.request.admin.GatewayConfigDetailsRequest;
-import com.epay.transaction.externalservice.request.admin.MerchantPricingRequest;
-import com.epay.transaction.externalservice.response.admin.*;
 import com.epay.transaction.model.response.TransactionResponse;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.sbi.epay.logging.utility.LoggerFactoryUtility;
-import com.sbi.epay.logging.utility.LoggerUtility;
 import org.springframework.core.ParameterizedTypeReference;
 
-import java.util.List;
-import java.util.Map;
-
 /**
- * AdminServicesClient is responsible for interacting with the admin service APIs 
- * to fetch and validate merchant-related details.
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author:@V0000001(Shubhangi Kurelay)
+ * Version:1.0
  */
-public class AdminServicesClient extends ApiClient {
 
-    public static final String GET_MULTI_ACCOUNT = "/merchant/multiaccountdetails/";
-    private static final String MERCHANT = "/merchant/";
-    private static final String MERCHANT_CONFIG_DETAILS_ENDPOINT = "/merchant/gatewayconfigdetails";
-    private static final String PRICING_API_ENDPOINT = "/merchant/pricing";
-    private static final String VVL_API_ENDPOINT = "/merchant/getmerchantvvldetails/";
-    private static final String BIN_CHECK_ENDPOINT = "/merchant/cards/binCheck";
-    private static final String MERCHANT_PAYMODE_ENDPOINT = "/merchant/paymode/";
-    private static final String GET_RFC_DETAILS = "/merchant/getMerchantRfcDetails/";
-    private static final String CURRENCY_CHK_ENDPOINT = "/merchant/validatecurrency";
 
-    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+public class EISServicesClient extends ApiClient {
 
-    /**
-     * Constructor to initialize AdminServicesClient with base URL.
-     *
-     * @param baseUrl Base URL of the admin service.
-     */
-    public AdminServicesClient(String baseUrl) {
+    public static final String GST_IN = "/fetchGST/details";
+    public static final String ECOM_FLAG = "/ecomflag";
+
+    public EISServicesClient(String baseUrl) {
         super(baseUrl);
     }
 
-    /**
-     * Fetches merchant information based on Merchant ID.
-     *
-     * @param mId Merchant ID.
-     * @return TransactionResponse containing MerchantInfoResponse.
-     */
-    public TransactionResponse<MerchantInfoResponse> getMerchantInfoByMId(String mId) {
-        logger.info("Fetching merchant info for mId: {}", mId);
-        return post(MERCHANT + mId, mId, new ParameterizedTypeReference<>() {});
+    public TransactionResponse<String> getECOMFlag(String cardNumber) {
+        return post(ECOM_FLAG, cardNumber, new ParameterizedTypeReference<>() {});
     }
 
-    /**
-     * Retrieves RFC details of a merchant.
-     *
-     * @param mId Merchant ID.
-     * @return TransactionResponse containing MerchantRfcDetailsResponse.
-     */
-    public TransactionResponse<MerchantRfcDetailsResponse> getMerchantRFCInfo(String mId) {
-        logger.info("Fetching RFC details for mId: {}", mId);
-        return post(GET_RFC_DETAILS + mId, mId, new ParameterizedTypeReference<>() {});
+    public TransactionResponse<String> getGstInDetails(String cardNumber) {
+        return post(GST_IN, cardNumber, new ParameterizedTypeReference<>() {});
     }
 
-    /**
-     * Retrieves multi-account details for a given merchant.
-     *
-     * @param mId Merchant ID.
-     * @return TransactionResponse containing multi-account details.
-     */
-    public TransactionResponse<Map<String, List<String>>> getMultiAccountDetailsApi(String mId) {
-        logger.info("Fetching multi-account details for mId: {}", mId);
-        return post(GET_MULTI_ACCOUNT + mId, mId, new ParameterizedTypeReference<>() {});
-    }
-
-    /**
-     * Retrieves gateway configuration details for a merchant.
-     *
-     * @param mId      Merchant ID.
-     * @param gtwMapId Gateway mapping ID.
-     * @return TransactionResponse containing GatewayConfigDetailsResponse.
-     */
-    public TransactionResponse<GatewayConfigDetailsResponse> getGatewayConfigDetails(String mId, String gtwMapId) {
-        logger.info("Fetching gateway config details for mId: {} and gtwMapId: {}", mId, gtwMapId);
-        GatewayConfigDetailsRequest request = GatewayConfigDetailsRequest.builder().aggGtwMapId(gtwMapId).mId(mId).build();
-        return post(MERCHANT_CONFIG_DETAILS_ENDPOINT, request, new ParameterizedTypeReference<>() {});
-    }
-
-    /**
-     * Fetches bin-check status from the admin service.
-     *
-     * @param request BinCheckRequest containing card bin details.
-     * @return TransactionResponse containing BinCheckResponse.
-     */
-    public TransactionResponse<BinCheckResponse> binCheckRequest(BinCheckRequest request) {
-        logger.info("Fetching binCheck status for request: {}", request);
-        return post(BIN_CHECK_ENDPOINT, request, new ParameterizedTypeReference<>() {});
-    }
-
-    /**
-     * Retrieves pay mode information for a merchant.
-     *
-     * @param mId Merchant ID.
-     * @return TransactionResponse containing merchant pay mode details.
-     */
-    public TransactionResponse<JsonNode> getMerchantPayModeInfo(String mId) {
-        logger.info("Fetching merchant pay mode info for mId: {}", mId);
-        return post(MERCHANT_PAYMODE_ENDPOINT + mId, mId, new ParameterizedTypeReference<>() {});
-    }
-
-    /**
-     * Retrieves merchant pricing structure from the admin service.
-     *
-     * @param request MerchantPricingRequest containing pricing details.
-     * @return TransactionResponse containing MerchantPricingResponse.
-     */
-    public TransactionResponse<MerchantPricingResponse> getMerchantPricingStructure(MerchantPricingRequest request) {
-        logger.info("Fetching merchant pricing structure for request: {}", request);
-        return post(PRICING_API_ENDPOINT, request, new ParameterizedTypeReference<>() {});
-    }
-
-    /**
-     * Retrieves volume velocity details for a merchant.
-     *
-     * @param mId Merchant ID.
-     * @return TransactionResponse containing MerchantVolumeVelocityResponse.
-     */
-    public TransactionResponse<MerchantVolumeVelocityResponse> geVvlDetails(String mId) {
-        logger.info("Fetching merchant volume velocity details for mId: {}", mId);
-        return post(VVL_API_ENDPOINT + mId, mId, new ParameterizedTypeReference<>() {});
-    }
-
-    /**
-     * Validates the currency details for a transaction.
-     *
-     * @param request CurrencyRequest containing currency validation details.
-     * @return TransactionResponse containing the validation result.
-     */
-    public TransactionResponse<?> getCurrencyValidate(CurrencyRequest request) {
-        logger.info("Validating currency for request: {}", request);
-        return post(CURRENCY_CHK_ENDPOINT, request, new ParameterizedTypeReference<>() {});
-    }
 }
+
+
