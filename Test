@@ -1,36 +1,58 @@
-package com.epay.transaction.externalservice;
 
+
+package com.epay.transaction.externalservice;
 
 import com.epay.transaction.client.ApiClient;
 import com.epay.transaction.model.response.TransactionResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.ParameterizedTypeReference;
 
 /**
  * Copyright (c) [2024] [State Bank of India]
  * All rights reserved.
  * <p>
- * Author:@V0000001(Shubhangi Kurelay)
- * Version:1.0
+ * Author: @V0000001 (Shubhangi Kurelay)
+ * Version: 1.0
+ * <p>
+ * This class provides external integration services for fetching GST details and E-commerce flag status
+ * using the EIS (External Integration Service).
  */
-
-
 public class EISServicesClient extends ApiClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(EISServicesClient.class);
 
     public static final String GST_IN = "/fetchGST/details";
     public static final String ECOM_FLAG = "/ecomflag";
 
+    /**
+     * Constructor to initialize EISServicesClient with a base URL.
+     *
+     * @param baseUrl the base URL for external service API calls
+     */
     public EISServicesClient(String baseUrl) {
         super(baseUrl);
     }
 
+    /**
+     * Retrieves the E-commerce flag status for a given card number.
+     *
+     * @param cardNumber the card number to fetch the E-commerce flag for
+     * @return a {@link TransactionResponse} containing the E-commerce flag status
+     */
     public TransactionResponse<String> getECOMFlag(String cardNumber) {
+        logger.info("Fetching ECOM flag for card number: {}", cardNumber);
         return post(ECOM_FLAG, cardNumber, new ParameterizedTypeReference<>() {});
     }
 
+    /**
+     * Retrieves GST details for a given card number.
+     *
+     * @param cardNumber the card number to fetch GST details for
+     * @return a {@link TransactionResponse} containing the GST details
+     */
     public TransactionResponse<String> getGstInDetails(String cardNumber) {
+        logger.info("Fetching GST details for card number: {}", cardNumber);
         return post(GST_IN, cardNumber, new ParameterizedTypeReference<>() {});
     }
-
 }
-
-
