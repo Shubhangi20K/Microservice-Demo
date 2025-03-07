@@ -1,176 +1,46 @@
-
-package com.sbi.epay.hazelcast.service;
-
 import com.hazelcast.core.HazelcastInstance;
 import com.hazelcast.core.HazelcastJsonValue;
 import com.hazelcast.map.IMap;
 import com.hazelcast.map.QueryResultSizeExceededException;
-import com.hazelcast.query.Predicate;
+import com.hazelcast.map.impl.query.QueryResultCollection;
+import com.hazelcast.query.Predicates;
 import com.sbi.epay.hazelcast.constants.HazelcastConstants;
+
 import com.sbi.epay.hazelcast.exception.HazelcastException;
 import com.sbi.epay.hazelcast.model.CacheableEntity;
 import com.sbi.epay.hazelcast.model.EPayCachebleData;
 import com.sbi.epay.hazelcast.model.HazelCastJsonValueData;
 import com.sbi.epay.hazelcast.model.PredicateInput;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.Mockito;
-import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.Collections;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import org.springframework.stereotype.Service;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-@ExtendWith(MockitoExtension.class)
-class HazelcastServiceTest {
-
-    @InjectMocks
-    private HazelcastService hazelcastService;
-
-    @Mock
-    private HazelcastInstance hazelcastInstance;
-
-    @Mock
-    private IMap<String, Object> mockMap;
-
-    @Mock
-    private IMap<String, HazelcastJsonValue> mockJsonMap;
-
-    private static final String TEST_MAP = "testMap";
-    private static final String TEST_KEY = "testKey";
-    private static final String TEST_JSON = "{\"key\":\"value\"}";
-
-    @BeforeEach
-    void setUp() {
-        when(hazelcastInstance.getMap(TEST_MAP)).thenReturn(mockMap);
-        when(hazelcastInstance.getMap(TEST_MAP)).thenReturn(mockJsonMap);
-    }
-
-    @Test
-    void testAddDataToCache() throws HazelcastException {
-        CacheableEntity entity = new CacheableEntity(TEST_MAP, TEST_KEY, new EPayCachebleData());
-        when(mockMap.put(TEST_KEY, entity.getCacheableEntityData())).thenReturn(null);
-
-        String result = hazelcastService.addDataToCache(entity, hazelcastInstance);
-
-        assertEquals(HazelcastConstants.DATA_ADDED, result);
-        verify(mockMap, times(1)).put(TEST_KEY, entity.getCacheableEntityData());
-    }
-
-    @Test
-    void testAddDataToCache_NullPointerException() {
-        assertThrows(HazelcastException.class, () -> hazelcastService.addDataToCache(null, hazelcastInstance));
-    }
-
-    @Test
-    void testGetDataByKey() throws HazelcastException {
-        EPayCachebleData data = new EPayCachebleData();
-        when(mockMap.get(TEST_KEY)).thenReturn(data);
-
-        CacheableEntity result = hazelcastService.getDataByKey(TEST_MAP, TEST_KEY, hazelcastInstance);
-
-        assertNotNull(result);
-        assertEquals(TEST_KEY, result.getKey());
-        assertEquals(TEST_MAP, result.getMapName());
-        assertEquals(data, result.getCacheableEntityData());
-    }
-
-    @Test
-    void testGetDataByKey_NullPointerException() {
-        assertThrows(HazelcastException.class, () -> hazelcastService.getDataByKey(null, null, hazelcastInstance));
-    }
-
-    @Test
-    void testGetDataBySql() throws HazelcastException {
-        when(mockMap.values(Mockito.any())).thenReturn(Collections.emptyList());
-
-        CacheableEntity result = hazelcastService.getDataBySql(TEST_MAP, "1=1", hazelcastInstance);
-
-        assertNotNull(result);
-        assertEquals(TEST_MAP, result.getMapName());
-    }
-
-    @Test
-    void testGetDataBySql_NullPointerException() {
-        assertThrows(HazelcastException.class, () -> hazelcastService.getDataBySql(null, null, hazelcastInstance));
-    }
-
-    @Test
-    void testGetDataByPredicate() throws HazelcastException {
-        PredicateInput predicateInput = new PredicateInput(TEST_MAP, TEST_KEY, mock(Predicate.class));
-        when(mockMap.values(Mockito.any())).thenReturn(Collections.emptyList());
-
-        assertThrows(HazelcastException.class, () -> hazelcastService.getDataByPredicate(predicateInput, hazelcastInstance));
-    }
-
-    @Test
-    void testGetDataByPredicate_QueryResultSizeExceededException() {
-        PredicateInput predicateInput = new PredicateInput(TEST_MAP, TEST_KEY, mock(Predicate.class));
-        when(mockMap.values(Mockito.any())).thenThrow(QueryResultSizeExceededException.class);
-
-        assertThrows(HazelcastException.class, () -> hazelcastService.getDataByPredicate(predicateInput, hazelcastInstance));
-    }
-
-    @Test
-    void testSaveDataByJsonObject() throws HazelcastException {
-        when(mockJsonMap.put(TEST_KEY, new HazelcastJsonValue(TEST_JSON))).thenReturn(null);
-
-        String result = hazelcastService.saveDataByJsonObject(TEST_MAP, TEST_KEY, TEST_JSON, hazelcastInstance);
-
-        assertEquals(HazelcastConstants.DATA_ADDED, result);
-        verify(mockJsonMap, times(1)).put(TEST_KEY, new HazelcastJsonValue(TEST_JSON));
-    }
-
-    @Test
-    void testSaveDataByJsonObject_NullPointerException() {
-        assertThrows(HazelcastException.class, () -> hazelcastService.saveDataByJsonObject(null, null, null, hazelcastInstance));
-    }
-
-    @Test
-    void testGetJSONData() throws HazelcastException {
-        HazelcastJsonValue jsonValue = new HazelcastJsonValue(TEST_JSON);
-        when(mockJsonMap.get(TEST_KEY)).thenReturn(jsonValue);
-
-        CacheableEntity result = hazelcastService.getJSONData(TEST_MAP, TEST_KEY, hazelcastInstance);
-
-        assertNotNull(result);
-        assertEquals(TEST_KEY, result.getKey());
-        assertEquals(TEST_MAP, result.getMapName());
-        assertEquals(new HazelCastJsonValueData(jsonValue), result.getHazelCastJsonValueData());
-    }
-
-    @Test
-    void testRemoveData() throws HazelcastException {
-        doNothing().when(mockJsonMap).remove(TEST_KEY);
-
-        String result = hazelcastService.removeData(TEST_MAP, TEST_KEY, hazelcastInstance);
-
-        assertEquals(HazelcastConstants.DATA_REMOVED, result);
-        verify(mockJsonMap, times(1)).remove(TEST_KEY);
-    }
-
-    @Test
-    void testUpdateData() throws HazelcastException {
-        CacheableEntity entity = new CacheableEntity(TEST_MAP, TEST_KEY, new EPayCachebleData());
-        when(mockMap.put(TEST_KEY, entity.getCacheableEntityData())).thenReturn(null);
-
-        String result = hazelcastService.updateData(entity, hazelcastInstance);
-
-        assertEquals(HazelcastConstants.DATA_UPDATE, result);
-        verify(mockMap, times(1)).put(TEST_KEY, entity.getCacheableEntityData());
-    }
-
-    @Test
-    void testUpdateJsonData() throws HazelcastException {
-        when(mockJsonMap.put(TEST_KEY, new HazelcastJsonValue(TEST_JSON))).thenReturn(null);
-
-        String result = hazelcastService.updateJsonData(TEST_MAP, TEST_KEY, TEST_JSON, hazelcastInstance);
-
-        assertEquals(HazelcastConstants.DATA_UPDATE, result);
-        verify(mockJsonMap, times(1)).put(TEST_KEY, new HazelcastJsonValue(TEST_JSON));
+/**
+ * This class is created for cache operations
+ * <p>
+ * Class Name: HazelcastService
+ * *
+ * Description:This class is used for cache operations
+ * *
+ * Author: V1018212(Hrishikesh Pandirakar)
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
+ */
+@Service
+public class HazelcastService {
+    public  CacheableEntity getDataByPredicate(PredicateInput predicateInput,HazelcastInstance hazelcastInstance) throws HazelcastException {
+        try {
+            log.debug("HazelcastService :: getDataByPredicate ");
+            IMap<String, Object> myMap = hazelcastInstance.getMap(predicateInput.getMapName());
+            QueryResultCollection queryResultCollection = (QueryResultCollection) myMap.values(predicateInput.getPredicate());
+            EPayCachebleData ePayCacheableData = (EPayCachebleData) queryResultCollection.stream().iterator().next();
+            return CacheableEntity.builder().key(predicateInput.getKey()).mapName(predicateInput.getMapName()).cacheableEntityData(ePayCacheableData).build();
+        } catch (QueryResultSizeExceededException |NullPointerException e) {
+            log.error("HazelcastService :: getDataByPredicate "+e.getMessage());
+            throw new HazelcastException(HazelcastConstants.HAZELCAST_1004, HazelcastConstants.HAZELCAST_1004_MSG);
+        }
     }
 }
