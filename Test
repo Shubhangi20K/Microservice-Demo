@@ -1,98 +1,14 @@
-
-
-import com.hazelcast.core.HazelcastInstance;
-import com.hazelcast.map.IMap;
-import com.hazelcast.map.QueryResultSizeExceededException;
-import com.hazelcast.map.impl.query.QueryResultCollection;
-import com.sbi.epay.hazelcast.exception.HazelcastException;
-import com.sbi.epay.hazelcast.model.CacheableEntity;
-import com.sbi.epay.hazelcast.model.EPayCachebleData;
-import com.sbi.epay.hazelcast.model.PredicateInput;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
-import java.util.Collections;
-import java.util.Iterator;
-
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
-
-@ExtendWith(MockitoExtension.class)
-class HazelcastServiceTest {
-
-    @InjectMocks
-    private HazelcastService hazelcastService;
-
-    @Mock
-    private HazelcastInstance hazelcastInstance;
-
-    @Mock
-    private IMap<String, Object> iMap;
-
-    @Mock
-    private PredicateInput predicateInput;
-
-    @Mock
-    private QueryResultCollection queryResultCollection;
-
-    @Mock
-    private Iterator<Object> iterator;
-
-    @Mock
-    private EPayCachebleData ePayCachebleData;
-
-    @BeforeEach
-    void setUp() {
-        when(predicateInput.getMapName()).thenReturn("testMap");
-        when(predicateInput.getKey()).thenReturn("testKey");
-    }
-
-    @Test
-    void testGetDataByPredicate_Success() throws HazelcastException {
-        // Mocking Hazelcast behavior
-        when(hazelcastInstance.getMap("testMap")).thenReturn(iMap);
-        when(iMap.values(predicateInput.getPredicate())).thenReturn(queryResultCollection);
-        when(queryResultCollection.stream()).thenReturn(Collections.singletonList(ePayCachebleData).stream());
-        when(queryResultCollection.iterator()).thenReturn(iterator);
-        when(iterator.hasNext()).thenReturn(true);
-        when(iterator.next()).thenReturn(ePayCachebleData);
-
-        // Call the method
-        CacheableEntity result = hazelcastService.getDataByPredicate(predicateInput, hazelcastInstance);
-
-        // Validate the result
-        assertNotNull(result);
-        assertEquals("testKey", result.getKey());
-        assertEquals("testMap", result.getMapName());
-        assertEquals(ePayCachebleData, result.getCacheableEntityData());
-
-        // Verify interactions
-        verify(hazelcastInstance).getMap("testMap");
-        verify(iMap).values(predicateInput.getPredicate());
-    }
-
-    @Test
-    void testGetDataByPredicate_QueryResultSizeExceededException() {
-        when(hazelcastInstance.getMap("testMap")).thenReturn(iMap);
-        when(iMap.values(predicateInput.getPredicate())).thenThrow(QueryResultSizeExceededException.class);
-
-        HazelcastException exception = assertThrows(HazelcastException.class, () ->
-                hazelcastService.getDataByPredicate(predicateInput, hazelcastInstance));
-
-        assertEquals("HAZELCAST_1004", exception.getErrorCode());
-    }
-
-    @Test
-    void testGetDataByPredicate_NullPointerException() {
-        when(hazelcastInstance.getMap("testMap")).thenReturn(iMap);
-        when(iMap.values(predicateInput.getPredicate())).thenReturn(null);
-
-        HazelcastException exception = assertThrows(HazelcastException.class, () ->
-                hazelcastService.getDataByPredicate(predicateInput, hazelcastInstance));
-
-        assertEquals("HAZELCAST_1004", exception.getErrorCode());
-    }
-}
+ID	RAW	No	SYS_GUID()	1	
+MERCHANT_ID	VARCHAR2(50 BYTE)	No		2	
+ORDER_REF_NUMBER	VARCHAR2(50 BYTE)	Yes		3	
+SBI_ORDER_REF_NUMBER	VARCHAR2(50 BYTE)	Yes		4	
+ATRN	VARCHAR2(50 BYTE)	Yes		5	
+ENTITY_TYPE	VARCHAR2(50 BYTE)	No		6	
+PAY_MODE	VARCHAR2(50 BYTE)	No		7	
+ERROR_CODE	VARCHAR2(20 BYTE)	No		8	
+FAILURE_REASON	VARCHAR2(50 BYTE)	Yes		9	
+ERROR_MESSAGE	VARCHAR2(1000 BYTE)	Yes		10	
+CREATED_BY	VARCHAR2(50 BYTE)	No		11	
+CREATED_DATE	NUMBER	No		12	
+UPDATED_BY	VARCHAR2(50 BYTE)	No		13	
+UPDATED_DATE	NUMBER	No		14	
