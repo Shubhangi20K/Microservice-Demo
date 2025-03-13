@@ -1,14 +1,22 @@
-ID	RAW	No	SYS_GUID()	1	
-MERCHANT_ID	VARCHAR2(50 BYTE)	No		2	
-ORDER_REF_NUMBER	VARCHAR2(50 BYTE)	Yes		3	
-SBI_ORDER_REF_NUMBER	VARCHAR2(50 BYTE)	Yes		4	
-ATRN	VARCHAR2(50 BYTE)	Yes		5	
-ENTITY_TYPE	VARCHAR2(50 BYTE)	No		6	
-PAY_MODE	VARCHAR2(50 BYTE)	No		7	
-ERROR_CODE	VARCHAR2(20 BYTE)	No		8	
-FAILURE_REASON	VARCHAR2(50 BYTE)	Yes		9	
-ERROR_MESSAGE	VARCHAR2(1000 BYTE)	Yes		10	
-CREATED_BY	VARCHAR2(50 BYTE)	No		11	
-CREATED_DATE	NUMBER	No		12	
-UPDATED_BY	VARCHAR2(50 BYTE)	No		13	
-UPDATED_DATE	NUMBER	No		14	
+@Setter
+@Getter
+@Data
+@Builder
+public class OrderUpdateRequest {
+
+    @NotNull
+    private String orderRefNumber;
+
+    private String sbiOrderRefNumber;
+    @NotNull
+    @Enumerated(EnumType.STRING)
+    private OrderStatus status;
+}
+   @PostMapping("/updateStatus")
+    @Operation(summary = "Update Order Details")
+    public TransactionResponse<String> updateOrderStatus(@RequestBody OrderUpdateRequest orderUpdateRequest) {
+        logger.info("Initiated update order status:",orderUpdateRequest);
+        return orderService.updateOrderStatus(orderUpdateRequest);
+    }
+
+{"status":0,"errors":[{"errorCode":"500","errorMessage":"Type definition error: [simple type, class com.epay.transaction.model.request.OrderUpdateRequest]"}]}
