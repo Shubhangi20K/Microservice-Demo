@@ -1,83 +1,29 @@
-package com.epay.transaction.dao;
+    public MerchantOrderDto getValidOrderBySBIOrderRefNumber(String sbiOrderRefNumber) {
+        MerchantOrder merchantOrder = merchantOrderRepository.findBySbiOrderRefNumber(sbiOrderRefNumber).orElseThrow(() ->
+        {
+          //  errorLogDao.saveErrorLog(ErrorLogDto.builder().mId(EPayIdentityUtil.getUserPrincipal().getMId()).entityType(EntityType.ORDER).failureReason(FailureReason.CUSTOMER).errorCode(ATTEMPT_EXPIRED_ERROR_CODE).errorMessage(ATTEMPT_EXPIRED_ERROR_MESSAGE + " or MerchantOrder is not valid.").build());
 
-import com.epay.transaction.dto.ErrorLogDto;
-import com.epay.transaction.entity.ErrorLog;
-import com.epay.transaction.mapper.ErrorMapper;
-import com.epay.transaction.repository.ErrorLogRepository;
-import com.epay.transaction.util.enums.EntityType;
-import com.epay.transaction.util.enums.FailureReason;
-import com.sbi.epay.logging.utility.LoggerFactoryUtility;
-import com.sbi.epay.logging.utility.LoggerUtility;
-import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Repository;
+            errorLogDao.logCustomerError(
+                  null,
+                    EntityType.ORDER,
+                    NOT_FOUND_ERROR_CODE,
+                    MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER)
+            );
+            return new TransactionException(ATTEMPT_EXPIRED_ERROR_CODE, ATTEMPT_EXPIRED_ERROR_MESSAGE + " or MerchantOrder is not valid.");});
 
-
-/**
- * Class Name: ErrorLogDao
- * *
- * Description: CRUD for Error log with categorized methods based on FailureReason.
- * *
- * Author: Gireesh M
- * <p>
- * Copyright (c) 2025 [State Bank of India]
- * All rights reserved
- * *
- */
-@Repository
-@RequiredArgsConstructor
-public class ErrorLogDao {
-    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
-    private final ErrorLogRepository errorLogRepository;
-    private final ErrorMapper errorMapper;
-
-    /**
-     * Logs a Customer-related error.
-     */
-    public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, FailureReason.CUSTOMER, errorCode, errorMessage);
+        logger.info("Get merchantOrder from DB by active merchantOrder reference number:{}", merchantOrder);
+        return merchantOrderMapper.entityToDto(merchantOrder);
     }
 
-    /**
-     * Logs a Technical-related error.
-     */
-    public void logTechnicalError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, FailureReason.TECHNICAL, errorCode, errorMessage);
+ private Optional<EPayPrincipal> validateTransactionTokenRequest(String authKey) {
+        EPayPrincipal authenticateEntity = new EPayPrincipal();
+        MerchantOrderDto order = orderDao.getValidOrderBySBIOrderRefNumber(authKey.substring(0, authKey.indexOf(":")));
+        authenticateEntity.setMId(order.getMId());
+        authenticateEntity.setOrderRef(order.getOrderRefNumber());
+        authenticateEntity.setAuthenticationId(authKey.substring(0, authKey.indexOf(":")));
+        return Optional.of(authenticateEntity);
     }
-
-    /**
-     * Logs a Fraud-related error.
-     */
-    public void logFraudError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, FailureReason.FRAUD, errorCode, errorMessage);
+   public MerchantOrderDto getMerchantOrder() {
+        logger.info("Validating Order By SBI orderReferenceNo");
+        return merchantOrderDao.getValidOrderBySBIOrderRefNumber(EPayIdentityUtil.getUserPrincipal().getOrderRef());
     }
-
-    /**
-     * Private method to create and save an error log.
-     */
-    private void saveErrorLog(String mId, EntityType entityType, FailureReason failureReason, String errorCode, String errorMessage) {
-        ErrorLogDto errorLogDto = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .failureReason(failureReason)
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        logger.info("Saving Error Log: {}", errorLogDto);
-        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
-        logger.info("Error Log Saved Successfully.");
-    }
-}
-
-
-
-errorLogDao.logCustomerError(
-    EPayIdentityUtil.getUserPrincipal().getMId(),
-    EntityType.ORDER,
-    NOT_FOUND_ERROR_CODE,
-    MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER)
-);
-
-
-
-
