@@ -1,22 +1,217 @@
-@Setter
-@Getter
-@Data
-@Builder
-public class OrderUpdateRequest {
+package com.epay.transaction.dao;
 
-    @NotNull
-    private String orderRefNumber;
+import com.epay.transaction.dto.ErrorLogDto;
+import com.epay.transaction.dto.MerchantCustomerDto;
+import com.epay.transaction.entity.MerchantCustomer;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.mapper.MerchantCustomerMapper;
+import com.epay.transaction.repository.MerchantCustomerRepository;
+import com.epay.transaction.util.EPayIdentityUtil;
+import com.epay.transaction.util.enums.EntityType;
+import com.epay.transaction.util.enums.FailureReason;
+import com.epay.transaction.util.enums.Status;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Component;
 
-    private String sbiOrderRefNumber;
-    @NotNull
-    @Enumerated(EnumType.STRING)
-    private OrderStatus status;
-}
-   @PostMapping("/updateStatus")
-    @Operation(summary = "Update Order Details")
-    public TransactionResponse<String> updateOrderStatus(@RequestBody OrderUpdateRequest orderUpdateRequest) {
-        logger.info("Initiated update order status:",orderUpdateRequest);
-        return orderService.updateOrderStatus(orderUpdateRequest);
+import java.text.MessageFormat;
+import java.util.Optional;
+import java.util.UUID;
+
+import static com.epay.transaction.util.TransactionConstant.VALID_CUSTOMER;
+import static com.epay.transaction.util.TransactionErrorConstants.*;
+
+/**
+ * Class Name:MerchantCustomerDao
+ * <p>
+ * Description:
+ * <p>
+ * Author:V1014352(Ranjan Kumar)
+ * <p>
+ * Copyright (c) 2024 [State Bank of INdia]
+ * All right reserved
+ * <p>
+ * Version:1.0
+ */
+@Component
+@RequiredArgsConstructor
+public class MerchantCustomerDao {
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final MerchantCustomerRepository merchantCustomerRepository;
+    private final KmsDao kmsDao;
+    private final MerchantCustomerMapper merchantCustomerMapper;
+    private final ErrorLogDao errorLogDao;
+    /**
+     * Method name : findCustomerByEmailAndPhoneNumber
+     * Description : Fetch merchant customer using email and phoneNumber
+     * @param email a String
+     * @param phoneNumber a String
+     * @return object of MerchantCustomerDto
+     */
+    public Optional<MerchantCustomerDto> findCustomerByEmailAndPhoneNumber(String email, String phoneNumber) {
+        logger.info("Request to get customer by email:{} and phone:{}", email, phoneNumber);
+        Optional<MerchantCustomer> customer = merchantCustomerRepository.findByEmailOrPhoneNumber(email, phoneNumber);
+        if(customer.isPresent()) {
+            logger.info("Found customer details, customer: {}", customer);
+            return Optional.of(merchantCustomerMapper.entityToDto(customer.get()));
+        }
+        return Optional.empty();
     }
 
-{"status":0,"errors":[{"errorCode":"500","errorMessage":"Type definition error: [simple type, class com.epay.transaction.model.request.OrderUpdateRequest]"}]}
+    /**
+     * Method name : saveCustomer
+     * Description : Stores merchant customer into database
+     * @param merchantCustomerDto an object of MerchantCustomerDto
+     * @return a customerId as String
+     */
+    public String saveCustomer(MerchantCustomerDto merchantCustomerDto) {
+        MerchantCustomer merchantCustomer = merchantCustomerMapper.dtoToEntity(merchantCustomerDto);
+        logger.info("Converted to merchantCustomer from merchantCustomerDto");
+        merchantCustomer = merchantCustomerRepository.save(merchantCustomer);
+        logger.info("Merchant Customer saved successfully.");
+        return merchantCustomer.getCustomerId().toString();
+    }
+
+    /**
+     * Method name : getCustomerByCustomerId
+     * Description : Fetch merchant customer from database using customerId
+     * @param customerId is a UUID
+     * @return an Object of MerchantCustomerDto
+     */
+    public MerchantCustomerDto getCustomerByCustomerId(UUID customerId) {
+        MerchantCustomer customer = merchantCustomerRepository.findByCustomerId(customerId).orElseThrow(() ->
+        {
+            errorLogDao.saveErrorLog(ErrorLogDto.builder().mId(EPayIdentityUtil.getUserPrincipal().getMId()).entityType(EntityType.CUSTOMER).failureReason(FailureReason.CUSTOMER).errorCode(NOT_FOUND_ERROR_CODE).errorMessage(MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, VALID_CUSTOMER)).build());
+         return new TransactionException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, VALID_CUSTOMER));});
+        logger.info("Found the merchant customer by customerId");
+        return merchantCustomerMapper.entityToDto(customer);
+    }
+
+    /**
+     * Method name : updateCustomerStatus
+     * Description : Updates Customer Status
+     * @param customerId is a UUID
+     * @param customerStatus is a String
+     */
+    public void updateCustomerStatus(UUID customerId, String customerStatus) {
+        Status status = Status.getStatus(customerStatus);
+        MerchantCustomer merchantCustomer = merchantCustomerRepository.findByCustomerId(customerId).orElseThrow(() ->
+                {
+                    errorLogDao.saveErrorLog(ErrorLogDto.builder().mId(EPayIdentityUtil.getUserPrincipal().getMId()).entityType(EntityType.CUSTOMER).failureReason(FailureReason.CUSTOMER).errorCode(NOT_FOUND_ERROR_CODE).errorMessage( MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, VALID_CUSTOMER)).build());
+                    return new TransactionException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, VALID_CUSTOMER));
+                });
+        logger.debug("Found the merchant customer for customerId");
+        merchantCustomer.setStatus(status.name());
+        merchantCustomerRepository.save(merchantCustomer);
+        logger.info("Merchant customer updated successfully.");
+    }
+
+    /**
+     * Method name : existsByCustomerId
+     * Description : Validates merchant customer using customerId
+     * @param customerId is a UUID
+     * @return an object of MerchantCustomerDto
+     */
+    public Boolean existsByCustomerId(UUID customerId) {
+        return merchantCustomerRepository.existsByCustomerId(customerId);
+    }
+
+    /**
+     * Method name : getMerchantMek
+     * Description : Fetches MEK from Key management Service
+     * @return a String
+     */
+    public String getMerchantMek() {
+        return kmsDao.getMerchantMekKey();
+    }
+
+    /**
+     * This method is used to get the customer by sbi order ref number
+     * @param sibOrderRefNumber String
+     * @return MerchantCustomerDto
+     */
+    public MerchantCustomerDto getCustomerBySbiOrderRefNumber(String sibOrderRefNumber) {
+        MerchantCustomer customer = merchantCustomerRepository.findCustomerBySbiReferenceNumber(sibOrderRefNumber)
+                .orElseThrow(() -> {
+                    errorLogDao.saveErrorLog(ErrorLogDto.builder().mId(EPayIdentityUtil.getUserPrincipal().getMId()).entityType(EntityType.ORDER).failureReason(FailureReason.BUSINESS).errorCode(NOT_FOUND_ERROR_CODE).errorMessage(MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, CUSTOMER)).build());
+                    return new TransactionException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, CUSTOMER));
+
+                });
+        return merchantCustomerMapper.entityToDto(customer);
+    }
+
+}
+
+
+package com.epay.transaction.dao;
+
+import com.epay.transaction.dto.ErrorLogDto;
+import com.epay.transaction.entity.ErrorLog;
+import com.epay.transaction.mapper.ErrorMapper;
+import com.epay.transaction.repository.ErrorLogRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+
+/**
+ * Class Name: public class ErrorLogDao
+ * *
+ * Description: CRUD for Error log.
+ * *
+ * Author: Gireesh M
+ * <p>
+ * Copyright (c) 2025 [State Bank of India]
+ * All rights reserved
+ * *
+ */
+@Repository
+@RequiredArgsConstructor
+public class ErrorLogDao {
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+
+    private final ErrorLogRepository errorLogRepository;
+    private final ErrorMapper errorMapper;
+
+    public void saveErrorLog(ErrorLogDto errorLogDto) {
+        logger.info("Saving Error Log : {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+}
+package com.epay.transaction.dto;
+
+import com.epay.transaction.util.enums.EntityType;
+import com.epay.transaction.util.enums.FailureReason;
+import com.epay.transaction.util.enums.PayMode;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import lombok.Builder;
+import lombok.Data;
+
+@Data
+@Builder
+public class ErrorLogDto {
+    private String mId;
+    private String orderRefNumber;
+    private String sbiOrderRefNumber;
+    private String atrn;
+
+    @Enumerated(EnumType.STRING)
+    private EntityType entityType;
+
+    @Enumerated(EnumType.STRING)
+    private PayMode payMode;
+
+    @Enumerated(EnumType.STRING)
+    private FailureReason failureReason;
+
+    private String errorCode;
+    private String errorMessage;
+}
+
+
+can we create 3 different method based on reason type in ErrorLogDao only, and pass the Error Code and message and entity type in it. So it will look more clean and common place for all object creation
