@@ -1,0 +1,49 @@
+@Repository
+@RequiredArgsConstructor
+public class ErrorLogDao {
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+
+    private final ErrorLogRepository errorLogRepository;
+    private final ErrorMapper errorMapper;
+
+    public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage, String sbiOrderRefNumber, String atrn, String orderRefNumber, String payMode) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .failureReason(FailureReason.CUSTOMER) // assuming a valid enum constant
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .sbiOrderRefNumber(sbiOrderRefNumber)
+                .atrn(atrn)
+                .orderRefNumber(orderRefNumber)
+                .payMode(PayMode.valueOf(payMode)) // assumes payMode string is valid
+                .build();
+
+        saveErrorLog(errorLogDto);
+    }
+
+    public void logTechnicalError(String mId, EntityType entityType, String errorCode, String errorMessage) {
+        saveErrorLog(buildErrorDto(mId, entityType, FailureReason.TECHNICAL, errorCode, errorMessage));
+    }
+
+    public void logBusinessError(String mId, EntityType entityType, String errorCode, String errorMessage) {
+        saveErrorLog(buildErrorDto(mId, entityType, FailureReason.BUSINESS, errorCode, errorMessage));
+    }
+
+    private ErrorLogDto buildErrorDto(String mId, EntityType entityType, FailureReason failureReason, String errorCode, String errorMessage) {
+        return ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .failureReason(failureReason)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+    }
+
+    private void saveErrorLog(ErrorLogDto errorLogDto) {
+        logger.info("Saving Error Log: {}", errorLogDto);
+        ErrorLog errorLog = errorMapper.dtoToEntity(errorLogDto);
+        errorLogRepository.save(errorLog);
+        logger.info("Error Log Saved Successfully.");
+    }
+}
