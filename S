@@ -1,11 +1,12 @@
-   public OrderDto getValidOrderBySBIOrderRefNumber(String mId, String sbiOrderRefNumber) {
+    public OrderDto getOrderBySbiOrderRefNumber(String mId, String sbiOrderRefNumber) {
         Order order = orderRepository.findBymIdAndSbiOrderRefNumber(mId, sbiOrderRefNumber).orElseThrow(() -> {
-            errorLogDao.logCustomerErrorS(mId, EntityType.ORDER, FailureReason.valueOf(sbiOrderRefNumber), ATTEMPT_EXPIRED_ERROR_CODE, ATTEMPT_EXPIRED_ERROR_MESSAGE + OR_ORDER_INVALID,sbiOrderRefNumber);
-            return new TransactionException(ATTEMPT_EXPIRED_ERROR_CODE, ATTEMPT_EXPIRED_ERROR_MESSAGE + OR_ORDER_INVALID);
+            errorLogDao.logCustomerError(mId, EntityType.ORDER, NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER));
+            return new TransactionException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER));
         });
-        logger.info("Get order from DB by active order reference number:{}", order);
+        logger.info("Get order from DB by merchantSbiOrder reference number:{}", order);
         return orderMapper.entityToDto(order);
     }
+
 
 
 package com.epay.transaction.dao;
@@ -16,7 +17,6 @@ import com.epay.transaction.mapper.ErrorMapper;
 import com.epay.transaction.repository.ErrorLogRepository;
 import com.epay.transaction.util.enums.EntityType;
 import com.epay.transaction.util.enums.FailureReason;
-import com.epay.transaction.util.enums.PayMode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sbi.epay.logging.utility.LoggerFactoryUtility;
 import com.sbi.epay.logging.utility.LoggerUtility;
@@ -48,106 +48,39 @@ public class ErrorLogDao {
      * Logs a Customer-related error.
      */
     public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        ErrorLogDto errorLogDto1 = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .failureReason(FailureReason.CUSTOMER) // assuming a valid enum constant
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        saveErrorLog(errorLogDto1);
+        saveErrorLog(mId, entityType, FailureReason.CUSTOMER, errorCode, errorMessage);
     }
-
 
     /**
      * Logs a Technical-related error.
      */
     public void logTechnicalError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        ErrorLogDto errorLogDto1 = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .failureReason(FailureReason.TECHNICAL) // assuming a valid enum constant
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        saveErrorLog(errorLogDto1);
+        saveErrorLog(mId, entityType, FailureReason.TECHNICAL, errorCode, errorMessage);
     }
 
     /**
      * Logs a Business-related error.
      */
     public void logBusinessError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        ErrorLogDto errorLogDto1 = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .failureReason(FailureReason.BUSINESS) // assuming a valid enum constant
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        saveErrorLog(errorLogDto1);
-    }
-    public void logCustomerErrorS( String mId, EntityType entityType, FailureReason failureReason, String sbiOrderRefNumber ,String errorCode, String errorMessage ) {
-       ErrorLogDto errorLogDto2 = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .failureReason(FailureReason.CUSTOMER) // assuming a valid enum constant
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .sbiOrderRefNumber(sbiOrderRefNumber)// assumes payMode string is valid
-                .build();
-
-       saveErrorLogs(errorLogDto2);
+        saveErrorLog(mId, entityType, FailureReason.BUSINESS, errorCode, errorMessage);
     }
 
-
-
-    private void saveErrorLogs( ErrorLogDto errorLogDto) {
-
-        logger.info("Saving Error Log: {}", errorLogDto);
-        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
-        logger.info("Error Log Saved Successfully.");
-    }
-    private void saveErrorLog(ErrorLogDto errorLogDto1) {
-        ErrorLogDto errorLogDto = ErrorLogDto.builder()
-                .mId(errorLogDto1.getMId())
-                .entityType(errorLogDto1.getEntityType())
-                .failureReason(FailureReason.valueOf(""))
-                .errorCode(errorLogDto1.getErrorCode())
-                .errorMessage(errorLogDto1.getErrorMessage())
-                .orderRefNumber(errorLogDto1.getOrderRefNumber())
-                .sbiOrderRefNumber(errorLogDto1.getSbiOrderRefNumber())
-                .atrn(errorLogDto1.getAtrn())
-                .payMode(PayMode.DC)
-                .build();
-
-        logger.info("Saving Error Log: {}", errorLogDto);
-        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
-        logger.info("Error Log Saved Successfully.");
-    }
     /**
      * Private method to create and save an error log.
      */
-    private void saveErrorLog1(String mId, EntityType entityType, String errorCode, String errorMessage, String sbiOrderRefNumber, String atrn, String orderRefNumber, String payMode) {
+    private void saveErrorLog(String mId, EntityType entityType, FailureReason failureReason, String errorCode, String errorMessage) {
         ErrorLogDto errorLogDto = ErrorLogDto.builder()
                 .mId(mId)
                 .entityType(entityType)
-                .failureReason(FailureReason.getFailureReason(""))
+                .failureReason(failureReason)
                 .errorCode(errorCode)
                 .errorMessage(errorMessage)
-                .orderRefNumber(orderRefNumber)
-                .sbiOrderRefNumber(sbiOrderRefNumber)
-                .atrn(atrn)
-                .payMode(PayMode.DC)
                 .build();
 
         logger.info("Saving Error Log: {}", errorLogDto);
         errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
         logger.info("Error Log Saved Successfully.");
     }
-
 
 }
 
