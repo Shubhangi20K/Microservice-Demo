@@ -10,6 +10,18 @@ import com.sbi.epay.logging.utility.LoggerUtility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+
+/**
+ * Class Name: public class ErrorLogDao
+ * *
+ * Description: CRUD for Error log.
+ * *
+ * Author: Gireesh M
+ * <p>
+ * Copyright (c) 2025 [State Bank of India]
+ * All rights reserved
+ * *
+ */
 @Repository
 @RequiredArgsConstructor
 public class ErrorLogDao {
@@ -17,67 +29,41 @@ public class ErrorLogDao {
     private final ErrorLogRepository errorLogRepository;
     private final ErrorMapper errorMapper;
 
-    // Full parameter method - Customer
     public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber, String sbiOrderRefNumber) {
         saveErrorLog(mId, entityType, FailureReason.CUSTOMER, errorCode, errorMessage, atrn, payMode, orderRefNumber, sbiOrderRefNumber);
     }
 
-    // Overload: without sbiOrderRefNumber
-    public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber) {
-        logCustomerError(mId, entityType, errorCode, errorMessage, atrn, payMode, orderRefNumber, null);
-    }
 
-    // Overload: minimal details
+    public void logCustomerError(String mId, EntityType entityType,  String orderRefNumber, String sbiOrderRefNumber,String errorCode, String errorMessage) {
+       saveErrorLog(mId,entityType,orderRefNumber,sbiOrderRefNumber,errorCode,errorMessage);
+    }
     public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        logCustomerError(mId, entityType, errorCode, errorMessage, null, null, null, null);
+        saveErrorLog(mId,entityType,errorCode,errorMessage);
     }
 
-    // Overload: from DTO
-    public void logCustomerError(ErrorLogDto dto) {
-        saveErrorLog(dto.getMId(), dto.getEntityType(), FailureReason.CUSTOMER, dto.getErrorCode(), dto.getErrorMessage(), dto.getAtrn(), dto.getPayMode(), dto.getOrderRefNumber(), dto.getSbiOrderRefNumber());
+    public void logCustomerError(String mId, EntityType entityType, String sbiOrderRefNumber, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType,sbiOrderRefNumber,errorCode,errorMessage);
     }
 
-    // Full parameter method - Technical
-    public void logTechnicalError(String mId, EntityType entityType, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber, String sbiOrderRefNumber) {
-        saveErrorLog(mId, entityType, FailureReason.TECHNICAL, errorCode, errorMessage, atrn, payMode, orderRefNumber, sbiOrderRefNumber);
+    public void logCustomerError(String mId, String atrn, EntityType entityType , String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, atrn, errorCode, errorMessage);
     }
 
-    // Overload: without sbiOrderRefNumber
-    public void logTechnicalError(String mId, EntityType entityType, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber) {
-        logTechnicalError(mId, entityType, errorCode, errorMessage, atrn, payMode, orderRefNumber, null);
+    public void logTechnicalError(String mId,EntityType entityType,String payMode, String errorCode, String errorMessage) {
+        saveErrorLog(mId,payMode, entityType, errorCode, errorMessage);
     }
 
-    // Overload: minimal details
     public void logTechnicalError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        logTechnicalError(mId, entityType, errorCode, errorMessage, null, null, null, null);
+        saveErrorLog(mId,entityType,errorCode,errorMessage);
     }
 
-    // Overload: from DTO
-    public void logTechnicalError(ErrorLogDto dto) {
-        saveErrorLog(dto.getMId(), dto.getEntityType(), FailureReason.TECHNICAL, dto.getErrorCode(), dto.getErrorMessage(), dto.getAtrn(), dto.getPayMode(), dto.getOrderRefNumber(), dto.getSbiOrderRefNumber());
-    }
-
-    // Full parameter method - Business
-    public void logBusinessError(String mId, EntityType entityType, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber, String sbiOrderRefNumber) {
-        saveErrorLog(mId, entityType, FailureReason.BUSINESS, errorCode, errorMessage, atrn, payMode, orderRefNumber, sbiOrderRefNumber);
-    }
-
-    // Overload: without sbiOrderRefNumber
-    public void logBusinessError(String mId, EntityType entityType, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber) {
-        logBusinessError(mId, entityType, errorCode, errorMessage, atrn, payMode, orderRefNumber, null);
-    }
-
-    // Overload: minimal details
     public void logBusinessError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        logBusinessError(mId, entityType, errorCode, errorMessage, null, null, null, null);
+        saveErrorLog(mId,entityType,errorCode,errorMessage);
+    }
+    public void logBusinessError(String mId, String atrn, EntityType entityType , String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, atrn, errorCode, errorMessage);
     }
 
-    // Overload: from DTO
-    public void logBusinessError(ErrorLogDto dto) {
-        saveErrorLog(dto.getMId(), dto.getEntityType(), FailureReason.BUSINESS, dto.getErrorCode(), dto.getErrorMessage(), dto.getAtrn(), dto.getPayMode(), dto.getOrderRefNumber(), dto.getSbiOrderRefNumber());
-    }
-
-    // Common private method
     private void saveErrorLog(String mId, EntityType entityType, FailureReason failureReason, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber, String sbiOrderRefNumber) {
         ErrorLogDto errorLogDto = ErrorLogDto.builder()
                 .mId(mId)
@@ -95,4 +81,71 @@ public class ErrorLogDao {
         errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
         logger.info("Error Log Saved Successfully.");
     }
+    private void saveErrorLog(String mId, EntityType entityType, String sbiOrderRefNumber, String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .sbiOrderRefNumber(sbiOrderRefNumber)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+    private void saveErrorLog(String mId, EntityType entityType, String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+    private void saveErrorLog(String mId, EntityType entityType,  String orderRefNumber, String sbiOrderRefNumber,String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .orderRefNumber(orderRefNumber)
+                .sbiOrderRefNumber(sbiOrderRefNumber)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+    private void saveErrorLog(String mId,String payMode, EntityType entityType, String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .payMode(payMode)
+                .entityType(entityType)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+
 }
+
+
+
+    public String  getEncryptionAESKey(String generatedToken) {
+        logger.debug("Fetching AES key for token: {}", generatedToken);
+        Token token = tokenRepository.findByGeneratedTokenAndStatus(generatedToken, TokenStatus.ACTIVE).orElseThrow(() ->
+        {
+            errorLogDao.logBusinessError(EPayIdentityUtil.getUserPrincipal().getMId(), EntityType.PAYMENT,
+                    NOT_FOUND_ERROR_CODE,MessageFormat.format(NOT_FOUND_ERROR_MESSAGE,"Encryption Key"));
+            return new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Encryption Key"));
+        });
+        logger.info("Getting Aes Key");
+        return token.getAesKey();
+    }
