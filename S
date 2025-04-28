@@ -1,6 +1,7 @@
 package com.epay.transaction.dao;
 
 import com.epay.transaction.dto.ErrorLogDto;
+import com.epay.transaction.entity.ErrorLog;
 import com.epay.transaction.mapper.ErrorMapper;
 import com.epay.transaction.repository.ErrorLogRepository;
 import com.epay.transaction.util.enums.EntityType;
@@ -10,18 +11,6 @@ import com.sbi.epay.logging.utility.LoggerUtility;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
-
-/**
- * Class Name: public class ErrorLogDao
- * *
- * Description: CRUD for Error log.
- * *
- * Author: Gireesh M
- * <p>
- * Copyright (c) 2025 [State Bank of India]
- * All rights reserved
- * *
- */
 @Repository
 @RequiredArgsConstructor
 public class ErrorLogDao {
@@ -60,6 +49,7 @@ public class ErrorLogDao {
     public void logBusinessError(String mId, EntityType entityType, String errorCode, String errorMessage) {
         saveErrorLog(mId,entityType,errorCode,errorMessage);
     }
+
     public void logBusinessError(String mId, String atrn, EntityType entityType , String errorCode, String errorMessage) {
         saveErrorLog(mId, entityType, atrn, errorCode, errorMessage);
     }
@@ -117,7 +107,8 @@ public class ErrorLogDao {
                 .build();
 
         logger.info("Saving Error Log: {}", errorLogDto);
-        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        ErrorLog errorLog = errorMapper.dtoToEntity(errorLogDto);
+        errorLogRepository.save(errorLog);
         logger.info("Error Log Saved Successfully.");
     }
     private void saveErrorLog(String mId,String payMode, EntityType entityType, String errorCode, String errorMessage) {
@@ -134,18 +125,5 @@ public class ErrorLogDao {
         logger.info("Error Log Saved Successfully.");
     }
 
+
 }
-
-
-
-    public String  getEncryptionAESKey(String generatedToken) {
-        logger.debug("Fetching AES key for token: {}", generatedToken);
-        Token token = tokenRepository.findByGeneratedTokenAndStatus(generatedToken, TokenStatus.ACTIVE).orElseThrow(() ->
-        {
-            errorLogDao.logBusinessError(EPayIdentityUtil.getUserPrincipal().getMId(), EntityType.PAYMENT,
-                    NOT_FOUND_ERROR_CODE,MessageFormat.format(NOT_FOUND_ERROR_MESSAGE,"Encryption Key"));
-            return new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Encryption Key"));
-        });
-        logger.info("Getting Aes Key");
-        return token.getAesKey();
-    }
