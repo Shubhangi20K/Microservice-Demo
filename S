@@ -1,173 +1,69 @@
-package com.epay.transaction.dao;
+package com.epay.transaction.validator;
 
-import com.epay.transaction.dto.ErrorLogDto;
-import com.epay.transaction.entity.ErrorLog;
-import com.epay.transaction.mapper.ErrorMapper;
-import com.epay.transaction.repository.ErrorLogRepository;
-import com.epay.transaction.util.enums.EntityType;
-import com.epay.transaction.util.enums.FailureReason;
+import com.epay.transaction.model.request.TransactionUpdateRequest;
 import com.sbi.epay.logging.utility.LoggerFactoryUtility;
 import com.sbi.epay.logging.utility.LoggerUtility;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Repository;
+import org.springframework.stereotype.Component;
 
-@Repository
+import java.util.ArrayList;
+
+import static com.epay.transaction.util.TransactionConstant.*;
+import static com.epay.transaction.util.TransactionErrorConstants.ATRN;
+import static com.epay.transaction.util.TransactionErrorConstants.REASON;
+
+/**
+ * Class Name: PaymentValidator
+ * *
+ * Description: Validates Payment Validator details .
+ * *
+ * Author: Shubhangi kurelay
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
+ */
+
+@Component
 @RequiredArgsConstructor
-public class ErrorLogDao {
+public class PaymentValidator extends BaseValidator {
     private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
-    private final ErrorLogRepository errorLogRepository;
-    private final ErrorMapper errorMapper;
 
-    /**
-     * Logs a customer-related error with detailed information including ATRN, PayMode, and Order References.
-     */
-    public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber, String sbiOrderRefNumber) {
-        saveErrorLog(mId, entityType, FailureReason.CUSTOMER, errorCode, errorMessage, atrn, payMode, orderRefNumber, sbiOrderRefNumber);
+    public void validateOrderRequest(TransactionUpdateRequest transactionUpdateRequest) {
+        errorDtoList = new ArrayList<>();
+        validateMandatoryFields(transactionUpdateRequest);
+        validateLeadingTrailingSpacesAndSingleSpace(transactionUpdateRequest);
+        validateFieldsValue(transactionUpdateRequest);
+        validateSpacialCharacter(transactionUpdateRequest);
+        throwIfErrors();
+
     }
 
-    /**
-     * Logs a customer error with order reference and SBI order reference numbers.
-     */
-    public void logCustomerError(String mId, EntityType entityType, String orderRefNumber, String sbiOrderRefNumber, String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, orderRefNumber, sbiOrderRefNumber, errorCode, errorMessage);
+    protected void validateSpacialCharacter(TransactionUpdateRequest transactionUpdateRequest) {
+        validateFieldWithRegex(transactionUpdateRequest.getAtrn(), ATRN_ARRN_REGEX, ATRN, "Invalid Atrn format");
+        validateFieldWithRegex(transactionUpdateRequest.getFailReason(), SPECIAL_CHARACTER_REGEX, REASON, "Invalid failreason format");
+        throwIfErrors();
+
     }
 
-    /**
-     * Logs a basic customer error with minimal required details.
-     */
-    public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, errorCode, errorMessage);
+
+    private void validateMandatoryFields(TransactionUpdateRequest transactionUpdateRequest) {
+        checkMandatoryField(transactionUpdateRequest.getAtrn(), ATRN);
+        checkMandatoryField(transactionUpdateRequest.getFailReason(), REASON);
+        throwIfErrors();
     }
 
-    /**
-     * Logs a customer error associated with an SBI Order Reference Number.
-     */
-    public void logCustomerError(String mId, EntityType entityType, String sbiOrderRefNumber, String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, sbiOrderRefNumber, errorCode, errorMessage);
+    private void validateLeadingTrailingSpacesAndSingleSpace(TransactionUpdateRequest transactionUpdateRequest) {
+        checkForLeadingTrailingAndSingleSpace(transactionUpdateRequest.getAtrn(), ATRN);
+        checkForLeadingTrailingAndSingleSpace(transactionUpdateRequest.getFailReason(), REASON);
+        throwIfErrors();
     }
 
-    /**
-     * Logs a customer error associated with ATRN (Additional Transaction Reference Number).
-     */
-    public void logCustomerError(String mId, String atrn, EntityType entityType , String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, atrn, errorCode, errorMessage);
+    private void validateFieldsValue(TransactionUpdateRequest transactionUpdateRequest) {
+        validateFieldLength(transactionUpdateRequest.getAtrn(), ATRN_ARRN_LENGTH, ATRN);
+        validateFieldLengths(transactionUpdateRequest.getFailReason(), REASON_LENGTH, REASON);
+        throwIfErrors();
     }
 
-    /**
-     * Logs a technical error related to payment mode and other details.
-     */
-    public void logTechnicalError(String mId, EntityType entityType, String payMode, String errorCode, String errorMessage) {
-        saveErrorLog(mId, payMode, entityType, errorCode, errorMessage);
-    }
-
-    /**
-     * Logs a technical error with basic details.
-     */
-    public void logTechnicalError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, errorCode, errorMessage);
-    }
-
-    /**
-     * Logs a business error with the required information.
-     */
-    public void logBusinessError(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, errorCode, errorMessage);
-    }
-
-    /**
-     * Logs a business error associated with ATRN.
-     */
-    public void logBusinessError(String mId, String atrn, EntityType entityType , String errorCode, String errorMessage) {
-        saveErrorLog(mId, entityType, atrn, errorCode, errorMessage);
-    }
-
-    /**
-     * Saves an error log with full information including failure reason, ATRN, PayMode, and Order references.
-     */
-    private void saveErrorLog(String mId, EntityType entityType, FailureReason failureReason, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber, String sbiOrderRefNumber) {
-        ErrorLogDto errorLogDto = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .sbiOrderRefNumber(sbiOrderRefNumber)
-                .atrn(atrn)
-                .payMode(payMode)
-                .orderRefNumber(orderRefNumber)
-                .failureReason(failureReason)
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        logger.info("Saving Error Log: {}", errorLogDto);
-        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
-        logger.info("Error Log Saved Successfully.");
-    }
-
-    /**
-     * Saves an error log with SBI order reference number.
-     */
-    private void saveErrorLog(String mId, EntityType entityType, String sbiOrderRefNumber, String errorCode, String errorMessage) {
-        ErrorLogDto errorLogDto = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .sbiOrderRefNumber(sbiOrderRefNumber)
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        logger.info("Saving Error Log: {}", errorLogDto);
-        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
-        logger.info("Error Log Saved Successfully.");
-    }
-
-    /**
-     * Saves a basic error log without any reference numbers.
-     */
-    private void saveErrorLog(String mId, EntityType entityType, String errorCode, String errorMessage) {
-        ErrorLogDto errorLogDto = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        logger.info("Saving Error Log: {}", errorLogDto);
-        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
-        logger.info("Error Log Saved Successfully.");
-    }
-
-    /**
-     * Saves an error log with order reference number and SBI order reference number.
-     */
-    private void saveErrorLog(String mId, EntityType entityType, String orderRefNumber, String sbiOrderRefNumber, String errorCode, String errorMessage) {
-        ErrorLogDto errorLogDto = ErrorLogDto.builder()
-                .mId(mId)
-                .entityType(entityType)
-                .orderRefNumber(orderRefNumber)
-                .sbiOrderRefNumber(sbiOrderRefNumber)
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        logger.info("Saving Error Log: {}", errorLogDto);
-        ErrorLog errorLog = errorMapper.dtoToEntity(errorLogDto);
-        errorLogRepository.save(errorLog);
-        logger.info("Error Log Saved Successfully.");
-    }
-
-    /**
-     * Saves a technical error log including pay mode information.
-     */
-    private void saveErrorLog(String mId, String payMode, EntityType entityType, String errorCode, String errorMessage) {
-        ErrorLogDto errorLogDto = ErrorLogDto.builder()
-                .mId(mId)
-                .payMode(payMode)
-                .entityType(entityType)
-                .errorCode(errorCode)
-                .errorMessage(errorMessage)
-                .build();
-
-        logger.info("Saving Error Log: {}", errorLogDto);
-        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
-        logger.info("Error Log Saved Successfully.");
-    }
 }
+
