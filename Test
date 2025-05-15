@@ -1,1 +1,530 @@
 
+package com.epay.transaction.dao;
+
+import com.epay.transaction.config.TransactionConfig;
+import com.epay.transaction.dto.OrderDto;
+import com.epay.transaction.dto.OrderStatusDto;
+import com.epay.transaction.entity.Order;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.externalservice.response.admin.MerchantInfoResponse;
+import com.epay.transaction.mapper.OrderMapper;
+import com.epay.transaction.model.response.OrderStatusResponse;
+import com.epay.transaction.repository.OrderRepository;
+import com.epay.transaction.specification.OrderSpecification;
+import com.epay.transaction.util.EPayIdentityUtil;
+import com.epay.transaction.util.enums.EntityType;
+import com.epay.transaction.util.TransactionErrorConstants;
+import com.epay.transaction.util.enums.FailureReason;
+import com.epay.transaction.util.enums.OrderStatus;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.springframework.data.jpa.domain.Specification;
+import org.springframework.stereotype.Component;
+
+import java.text.MessageFormat;
+import java.util.List;
+
+import static com.epay.transaction.util.EncryptionDecryptionUtil.hashValue;
+import static com.epay.transaction.util.TransactionErrorConstants.*;
+
+/**
+ * Class Name: OrderDao
+ * *
+ * Description: OrderDao class for access order repository
+ * *
+ * Author: V1012904(Shital suryawanshi)
+ * Copyright (c) 2024 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
+ */
+@Component
+@RequiredArgsConstructor
+public class OrderDao {
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final OrderRepository orderRepository;
+    private final OrderMapper orderMapper;
+    private final TransactionConfig transactionConfig;
+    private final KmsDao kmsDao;
+    private final AdminDao adminDao;
+    private final ErrorLogDao errorLogDao;
+
+    /**
+     * Method name : createMerchantOrder
+     * Description : Creates merchant order
+     *
+     * @param orderDto an object of OrderDto
+     * @return object of OrderDto
+     */
+    @Transactional
+    public OrderDto createMerchantOrder(OrderDto orderDto) {
+        orderDto.setStatus(OrderStatus.CREATED);
+        orderDto = saveOrder(orderDto);
+        orderDto.setOrderHash(hashValue(orderDto.getMId(), orderDto.getSbiOrderRefNumber()));
+        orderDto = saveOrder(orderDto);
+        orderDto.setTransactionUrl(transactionConfig.getFormPostUrl() + orderDto.getOrderHash());
+        return orderDto;
+    }
+
+    /**
+     * Method name : createMerchantOrder
+     * Description : Stores merchant order into database
+     *
+     * @param orderDto an object of OrderDto
+     * @return an object of OrderDto after conversion from entity to DTO.
+     */
+    public OrderDto saveOrder(OrderDto orderDto) {
+        Order order = orderMapper.dtoToEntity(orderDto);
+        order = orderRepository.save(order);
+        logger.info("Save order request successfully in DB:{}", order);
+        return orderMapper.entityToDto(order);
+    }
+
+    /**
+     * Method name : updateOrderStatus
+     * Description : Updates merchant order status into database
+     *
+     * @param orderDto orderDto
+     */
+    public void updateOrderStatus(OrderDto orderDto) {
+        Order order = orderMapper.dtoToEntity(orderDto);
+        orderRepository.save(order);
+        logger.info("Updated order status successfully in DB.");
+    }
+
+    public OrderDto getMerchantOrderByOrderRefAndSbiOrderRefNumber(String mId, String orderRefNumber, String sbiOrderRefNumber) {
+        Order order = orderRepository.findBymIdAndOrderRefNumberAndSbiOrderRefNumber(mId, orderRefNumber, sbiOrderRefNumber).orElseThrow(() -> {
+          //  errorLogDao.logCustomerError(mId, EntityType.ORDER, orderRefNumber,sbiOrderRefNumber,NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER));
+            return new TransactionException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER));
+        });
+        return orderMapper.entityToDto(order);
+    }
+
+    /**
+     * Method name : getOrderBySbiOrderRefNumber
+     * Description : Fetch merchant order using SbiOrderRefNumber.
+     *
+     * @param sbiOrderRefNumber is a String.
+     * @return an object of OrderDto.
+     */
+    public OrderDto getOrderBySbiOrderRefNumber(String mId, String sbiOrderRefNumber) {
+        Order order = orderRepository.findBymIdAndSbiOrderRefNumber(mId, sbiOrderRefNumber).orElseThrow(() -> {
+            errorLogDao.logCustomerError(mId, EntityType.ORDER,sbiOrderRefNumber,Order.builder().orderRefNumber("").paymentMode("").build(), FailureReason.CUSTOMER,NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER));
+            return new TransactionException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER));
+        });
+        logger.info("Get order from DB by merchantSbiOrder reference number:{}", order);
+        return orderMapper.entityToDto(order);
+    }
+
+    /**
+     * Method name : getValidOrderBySBIOrderRefNumber
+     * Description : Fetch valid merchant order using sbiOrderRefNumber.
+     *
+     * @param sbiOrderRefNumber is a String.
+     * @return an object of OrderDto.
+     */
+    public OrderDto getValidOrderBySBIOrderRefNumber(String mId, String sbiOrderRefNumber) {
+        Order order = orderRepository.findBymIdAndSbiOrderRefNumber(mId, sbiOrderRefNumber).orElseThrow(() -> {
+           // errorLogDao.logCustomerError(mId, EntityType.ORDER,sbiOrderRefNumber,ATTEMPT_EXPIRED_ERROR_CODE, ATTEMPT_EXPIRED_ERROR_MESSAGE + OR_ORDER_INVALID);
+            return new TransactionException(ATTEMPT_EXPIRED_ERROR_CODE, ATTEMPT_EXPIRED_ERROR_MESSAGE + OR_ORDER_INVALID);
+        });
+        logger.info("Get order from DB by active order reference number:{}", order);
+        return orderMapper.entityToDto(order);
+    }
+
+    /**
+     * Method name : getValidOrderBySBIOrderRefNumber
+     * Description : Fetch valid merchant order using sbiOrderRefNumber.
+     *
+     * @param sbiOrderRefNumber is a String.
+     * @return an object of OrderDto.
+     */
+    public OrderDto getValidOrderBySBIOrderRefNumber(String sbiOrderRefNumber) {
+        Order order = orderRepository.findBySbiOrderRefNumber(sbiOrderRefNumber).orElseThrow(() ->
+                new TransactionException(ATTEMPT_EXPIRED_ERROR_CODE, ATTEMPT_EXPIRED_ERROR_MESSAGE + OR_ORDER_INVALID));
+        logger.info("Get order from DB by active order reference number:{}", order);
+        return orderMapper.entityToDto(order);
+    }
+
+    /**
+     * Method name : getOrderByOrderHashAndStatus
+     * Description : Fetch merchant order by orderHash And orderStatus.
+     *
+     * @param orderHash   is a String.
+     * @param orderStatus is a List of OrderStatus.
+     * @return an object of OrderDto.
+     */
+    public OrderDto getOrderByOrderHashAndStatus(String orderHash, List<OrderStatus> orderStatus) {
+        Order order = orderRepository.findOrderByHashAndStatus(orderHash, orderStatus).orElseThrow(() -> {
+            errorLogDao.logCustomerError(EPayIdentityUtil.getUserPrincipal().getMId(), EntityType.ORDER, NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER));
+            return new TransactionException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, MERCHANT_ORDER));
+        });
+        return orderMapper.entityToDto(order);
+    }
+
+    /**
+     * Method name : getActiveOrderByOrderHash
+     * Description : Fetch merchant order using orderHash.
+     *
+     * @param orderHash is a String.
+     * @return an object of OrderDto
+     */
+    public OrderDto getActiveOrderByOrderHash(String orderHash) {
+        logger.info("Request for active Order using orderHash from Order Database");
+        Order order = orderRepository.findByOrderHashAndStatusAndExpiryGreaterThan(orderHash, OrderStatus.CREATED, System.currentTimeMillis()).orElseThrow(() -> {
+            errorLogDao.logCustomerError(null, EntityType.ORDER, NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, VALID_ORDER_HASH));
+            return new TransactionException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, VALID_ORDER_HASH));
+        });
+        logger.info("Getting Active Order using orderHash from Order Database");
+        return orderMapper.entityToDto(order);
+    }
+
+    /**
+     * Method name : getMerchantMek
+     * Description : Fetches MEK from Key management Service
+     *
+     * @return a String
+     */
+    public String getMerchantMek() {
+        return kmsDao.getMerchantMekKey();
+    }
+
+    /**
+     * Method name : getMerchantMek
+     * Description : Fetches Merchant Details using mId
+     *
+     * @param mId is a String.
+     * @return an object of MerchantInfoResponse
+     */
+    public MerchantInfoResponse getMerchantByMId(String mId) {
+        return adminDao.getMerchantByMId(mId);
+    }
+
+    /**
+     * This method is used to check the PAID order Status for orderRefNumber
+     *
+     * @param orderRefNumber String
+     * @return boolean
+     */
+    public boolean isOrderStatusPaid(String mId, String orderRefNumber) {
+        return orderRepository.existsBymIdAndOrderRefNumberAndStatus(mId, orderRefNumber,OrderStatus.PAID);
+    }
+
+    /**
+     * This method is used to get the Sbi order reference number count against order reference number.
+     *
+     * @param orderRefNumber String
+     * @return int
+     */
+    public long getSbiOrderRefNumberCountByOrderRefNumber(String mId, String orderRefNumber) {
+        logger.info("Finding SbiRefNumber count by orderRefNumber : {}", orderRefNumber);
+        return orderRepository.countSbiOrderRefNumberBymIdAndOrderRefNumber(mId, orderRefNumber);
+    }
+
+    public List<OrderStatusResponse> findByOrderStatusDto(String mId, OrderStatusDto orderStatusDto) {
+        logger.info("Searching for transactions for merchant ID: {} with search criteria: {}", mId, orderStatusDto);
+        Specification<Order> specification = OrderSpecification.searchOrder(mId, orderStatusDto);
+        List<Order> orderList =  orderRepository.findAll(specification);
+        if(orderList.isEmpty()) {
+            throw new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Transaction details"));
+        }
+        return orderList.stream().map(orderMapper::mapMerchantOrderToResponse).toList();
+    }
+
+
+}
+
+------------------------------------------------------------------------------------------------------------
+package com.epay.transaction.dao;
+
+import com.epay.transaction.dto.ErrorLogDto;
+import com.epay.transaction.entity.ErrorLog;
+import com.epay.transaction.entity.Order;
+import com.epay.transaction.mapper.ErrorMapper;
+import com.epay.transaction.repository.ErrorLogRepository;
+import com.epay.transaction.util.enums.EntityType;
+import com.epay.transaction.util.enums.FailureReason;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Repository;
+
+/**
+ * Class Name:ErrorLogDao
+ * Description:This DAO class is responsible for saving error log in database .
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author:Shubhangi Kurelay
+ * Version:1.0
+ */
+@Repository
+@RequiredArgsConstructor
+public class ErrorLogDao {
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final ErrorLogRepository errorLogRepository;
+    private final ErrorMapper errorMapper;
+
+    /**
+     * Logs a customer-related error with detailed information including ATRN, PayMode, and Order References.
+     */
+//    public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber, String sbiOrderRefNumber) {
+//        saveErrorLog(mId, entityType, FailureReason.CUSTOMER, errorCode, errorMessage, atrn, payMode, orderRefNumber, sbiOrderRefNumber);
+//    }
+    public void logCustomerError(String mId, EntityType entityType, String atrnNum, String orderRefNumber, String sbiOrderRefNumber, String payMode, FailureReason failureReason, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, atrnNum, orderRefNumber, sbiOrderRefNumber, payMode, failureReason, errorCode, errorMessage);
+    }
+
+    /**
+     * Logs a customer error with order reference and SBI order reference numbers.
+     */
+/*
+    public void logCustomerError(String mId, EntityType entityType, String orderRefNumber, String sbiOrderRefNumber, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, orderRefNumber, sbiOrderRefNumber, errorCode, errorMessage);
+    }
+*/
+
+    /**
+     * Logs a basic customer error with minimal required details.
+     */
+    public void logCustomerError(String mId, EntityType entityType, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, errorCode, errorMessage);
+    }
+
+    /**
+     * Logs a customer error associated with an SBI Order Reference Number.
+     */
+    public void logCustomerError(String mId, EntityType entityType, String sbiOrderRefNumber, Order order,FailureReason failureReason, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, sbiOrderRefNumber,order,failureReason, errorCode, errorMessage);
+    }
+
+    /**
+     * Logs a customer error associated with ATRN .
+     */
+    public void logCustomerError(String mId, String atrn, EntityType entityType, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, atrn, errorCode, errorMessage);
+    }
+
+    /**
+     * Logs a technical error related to  payMode and other details.
+     */
+    public void logTechnicalError(String mId, EntityType entityType, String payMode, String errorCode, String errorMessage) {
+        saveErrorLog(mId, payMode, entityType, errorCode, errorMessage);
+    }
+
+    /**
+     * Logs a technical error with basic details.
+     */
+    public void logTechnicalError(String mId, EntityType entityType, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, errorCode, errorMessage);
+    }
+
+    /**
+     * Logs a business error with the required information.
+     */
+    public void logBusinessError(String mId, EntityType entityType, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, errorCode, errorMessage);
+    }
+
+    /**
+     * Logs a business error associated with ATRN.
+     */
+    public void logBusinessError(String mId, String atrn, EntityType entityType, String errorCode, String errorMessage) {
+        saveErrorLog(mId, entityType, atrn, errorCode, errorMessage);
+    }
+
+    /**
+     * Saves an error log with full information including failure reason, ATRN, PayMode, and Order references.
+     */
+    private void saveErrorLog(String mId, EntityType entityType, FailureReason failureReason, String errorCode, String errorMessage, String atrn, String payMode, String orderRefNumber, String sbiOrderRefNumber) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .sbiOrderRefNumber(sbiOrderRefNumber)
+                .atrnNum(atrn)
+                .payMode(payMode)
+                .orderRefNumber(orderRefNumber)
+                .failureReason(failureReason)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+
+    /**
+     * Saves an error log with SBI order reference number.
+     */
+    private void saveErrorLog(String mId, EntityType entityType, String sbiOrderRefNumber, String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .sbiOrderRefNumber(sbiOrderRefNumber)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+
+    /**
+     * Saves a basic error log without any reference numbers.
+     */
+    private void saveErrorLog(String mId, EntityType entityType, String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+
+    /**
+     * Saves an error log with order reference number and SBI order reference number.
+     */
+    private void saveErrorLog(String mId, EntityType entityType, String orderRefNumber, String sbiOrderRefNumber,Order order,String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .orderRefNumber(orderRefNumber)
+                .sbiOrderRefNumber(sbiOrderRefNumber)
+                .payMode(order.getPaymentMode())
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        ErrorLog errorLog = errorMapper.dtoToEntity(errorLogDto);
+        errorLogRepository.save(errorLog);
+        logger.info("Error Log Saved Successfully.");
+    }
+
+    /**
+     * Saves an error log with order reference number and SBI order reference number.
+     */
+    private void saveErrorLog(String mId, EntityType entityType, String sbiOrderRefNumber,Order order, FailureReason failureReason ,String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .sbiOrderRefNumber(sbiOrderRefNumber)
+                .orderRefNumber(order.getOrderRefNumber())
+                .payMode(order.getPaymentMode())
+                .failureReason(failureReason)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        ErrorLog errorLog = errorMapper.dtoToEntity(errorLogDto);
+        errorLogRepository.save(errorLog);
+        logger.info("Error Log Saved Successfully.");
+    }
+
+    /**
+     * Saves a technical error log including pay mode information.
+     */
+    private void saveErrorLog(String mId, String payMode, EntityType entityType, String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .payMode(payMode)
+                .entityType(entityType)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        errorLogRepository.save(errorMapper.dtoToEntity(errorLogDto));
+        logger.info("Error Log Saved Successfully.");
+    }
+
+    private void saveErrorLog(String mId, EntityType entityType,String atrnNum, String orderRefNumber, String sbiOrderRefNumber, String payMode,FailureReason failureReason,String errorCode, String errorMessage) {
+        ErrorLogDto errorLogDto = ErrorLogDto.builder()
+                .mId(mId)
+                .entityType(entityType)
+                .atrnNum(atrnNum)
+                .orderRefNumber(orderRefNumber)
+                .sbiOrderRefNumber(sbiOrderRefNumber)
+                .payMode(payMode)
+                .failureReason(failureReason)
+                .errorCode(errorCode)
+                .errorMessage(errorMessage)
+                .build();
+
+        logger.info("Saving Error Log: {}", errorLogDto);
+        ErrorLog errorLog = errorMapper.dtoToEntity(errorLogDto);
+        errorLogRepository.save(errorLog);
+        logger.info("Error Log Saved Successfully.");
+    }
+
+}
+-----------------------------------------------------------------------------------------
+package com.epay.transaction.entity;
+
+import com.epay.transaction.util.enums.OrderStatus;
+import jakarta.persistence.*;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
+
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.UUID;
+
+@EqualsAndHashCode(callSuper = true)
+@Getter
+@Setter
+@SuperBuilder
+@NoArgsConstructor
+@AllArgsConstructor
+@Entity
+@Table(name = "MERCHANT_ORDERS")
+public class Order extends AuditEntity {
+
+    @Id
+    @Column(nullable = false, updatable = false, unique = true)
+    private String sbiOrderRefNumber;
+    @Column(name = "MERCHANT_ID")
+    private String mId;
+    private String customerId;
+    private String currencyCode;
+    private BigDecimal orderAmount;
+    private String orderRefNumber;
+
+    @Enumerated(EnumType.STRING)
+    private OrderStatus status;
+
+    @Column(columnDefinition = "CLOB")
+    private String otherDetails;
+    private Long expiry;
+
+    @Column(columnDefinition = "CLOB")
+    private String multiAccounts;
+    private String paymentMode;
+    private String orderHash;
+    private String returnUrl;
+    private Integer orderRetryCount;
+
+    @Column(columnDefinition = "CLOB")
+    private String thirdPartyDetails;
+
+    @OneToMany(mappedBy = "sbiOrderRefNumber", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<MerchantOrderPayment> merchantOrderPayments;
+
+    /**
+     * custom generator, do not remove it
+     */
+    @PrePersist
+    protected void createSbiOrderRefNumber() {
+        this.sbiOrderRefNumber = UUID.randomUUID().toString().toUpperCase().replace("-", "").substring(0, 20);
+    }
+
+}
