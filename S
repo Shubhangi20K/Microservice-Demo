@@ -1,1 +1,5 @@
 git log --pretty=format:"%h - %s (%an, %ar)" --abbrev-commit > CHANGELOG.md
+
+
+
+git log --merges --pretty=format:"%h - %s (%an, %ar)" > CHANGELOG.md
