@@ -1,1 +1,54 @@
+@ExtendWith(MockitoExtension.class)
+class AdminServiceTest {
 
+    @InjectMocks
+    private AdminService adminService;
+
+    @Mock
+    private AdminDao adminDao;
+
+    @Mock
+    private OnboardingValidator onboardingValidator;
+    
+    @Mock
+    private AdminValidator adminValidator;
+    
+    @Mock
+    private MerchantEntityGroupMapper merchantEntityGroupMapper;
+    
+    @Mock
+    private MerchantMapper merchantMapper;
+    
+    @Mock
+    private HelpSupportService helpSupportService;
+    
+    @Mock
+    private MerchantBankService merchantBankService;
+
+    @Mock
+    private MerchantUserValidator mIdValidator;
+
+    @Test
+    void testGetBankDetailsByIfscCode_success() {
+        // Given
+        String ifscCode = "SBIN0000123";
+        BankDetailsResponse mockResponse = new BankDetailsResponse();
+        mockResponse.setBankName("State Bank of India");
+        mockResponse.setIfscCode(ifscCode);
+        mockResponse.setBranch("Mumbai Main Branch");
+
+        Mockito.when(adminDao.getBankDetailsByIfscCode(ifscCode)).thenReturn(mockResponse);
+
+        // When
+        MerchantResponse<BankDetailsResponse> response = adminService.getBankDetailsByIfscCode(ifscCode);
+
+        // Then
+        Assertions.assertNotNull(response);
+        Assertions.assertEquals(1, response.getData().size());
+        Assertions.assertEquals("State Bank of India", response.getData().get(0).getBankName());
+        Assertions.assertEquals(ifscCode, response.getData().get(0).getIfscCode());
+        Assertions.assertEquals("Mumbai Main Branch", response.getData().get(0).getBranch());
+
+        Mockito.verify(adminDao, Mockito.times(1)).getBankDetailsByIfscCode(ifscCode);
+    }
+}
