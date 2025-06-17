@@ -1,1 +1,52 @@
+@ExtendWith(MockitoExtension.class)
+class AdminServiceTest {
 
+    @Mock
+    private OnboardingValidator onboardingValidator;
+    
+    @Mock
+    private AdminValidator adminValidator;
+
+    @Mock
+    private AdminDao adminDao;
+
+    @Mock
+    private MerchantEntityGroupMapper merchantEntityGroupMapper;
+
+    @Mock
+    private MerchantMapper merchantMapper;
+
+    @Mock
+    private HelpSupportService helpSupportService;
+
+    @Mock
+    private MerchantBankService merchantBankService;
+
+    @Mock
+    private MerchantUserValidator mIdValidator;
+
+    @InjectMocks
+    private AdminService adminService;
+
+    @Test
+    void testGetAllBanks_ShouldReturnBankList() {
+        // Arrange
+        BankResponse bank1 = new BankResponse("HDFC", "HDFC001");
+        BankResponse bank2 = new BankResponse("SBI", "SBI002");
+        List<BankResponse> mockBankList = List.of(bank1, bank2);
+
+        Mockito.when(adminDao.getAllBanks()).thenReturn(mockBankList);
+
+        // Act
+        MerchantResponse<BankResponse> response = adminService.getAllBanks();
+
+        // Assert
+        assertNotNull(response);
+        assertEquals(2, response.getData().size());
+        assertEquals("HDFC", response.getData().get(0).getBankName());
+        assertEquals("SBI002", response.getData().get(1).getBankCode());
+
+        // Verify interaction
+        Mockito.verify(adminDao).getAllBanks();
+    }
+}
