@@ -38,3 +38,5 @@ public class AdminDao {
         log.info("Fetching all branches for bank ID {} from external service", bankId);
         return adminServicesClient.getAllBranches(bankId);
     }
+
+Currently I check in develop branch for transactions Service not showing test folder  and Merchant Service I have attached the below the screenshot .
