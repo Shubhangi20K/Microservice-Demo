@@ -1,1 +1,40 @@
+@Service
+@RequiredArgsConstructor
+public class AdminService {
 
+    private final OnboardingValidator onboardingValidator;
+    private final AdminValidator adminValidator;
+    private final AdminDao adminDao;
+    private final MerchantEntityGroupMapper merchantEntityGroupMapper;
+    private final MerchantMapper merchantMapper;
+    private final HelpSupportService helpSupportService;
+    private final MerchantBankService merchantBankService;
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+    private final MerchantUserValidator mIdValidator;
+    
+public MerchantResponse<BranchResponse> getAllBranches(String bankId){
+        log.info("Fetching all branches from DAO for bank ID: {}", bankId);
+        List<BranchResponse> branchResponseList = adminDao.getAllBranches(bankId);
+        log.info("Fetched branches: {}", CollectionUtils.size(branchResponseList));
+        return MerchantResponse.<BranchResponse>builder().data(branchResponseList).build();
+    }
+
+
+
+@Component
+@RequiredArgsConstructor
+public class AdminDao {
+
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+
+    private final MerchantRepository merchantRepository;
+    private final MerchantUserDao merchantUserDao;
+    private final MerchantEntityGroupRepository merchantEntityGroupRepository;
+    private final MerchantMapper mapper;
+    private final FooterRepository footerRepository;
+    private final AdminServicesClient adminServicesClient;
+
+    public List<BranchResponse> getAllBranches(String bankId) {
+        log.info("Fetching all branches for bank ID {} from external service", bankId);
+        return adminServicesClient.getAllBranches(bankId);
+    }
