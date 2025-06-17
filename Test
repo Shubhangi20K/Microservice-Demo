@@ -1,54 +1,48 @@
+@Service
+@RequiredArgsConstructor
+public class AdminService {
 
-@ExtendWith(MockitoExtension.class)
-class AdminServiceTest {
+    private final OnboardingValidator onboardingValidator;
+    private final AdminValidator adminValidator;
+    private final AdminDao adminDao;
+    private final MerchantEntityGroupMapper merchantEntityGroupMapper;
+    private final MerchantMapper merchantMapper;
+    private final HelpSupportService helpSupportService;
+    private final MerchantBankService merchantBankService;
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+    private final MerchantUserValidator mIdValidator;
 
-    @Mock
-    private AdminDao adminDao;
-
-    @Mock
-    private OnboardingValidator onboardingValidator;
-
-    @Mock
-    private AdminValidator adminValidator;
-
-    @Mock
-    private MerchantEntityGroupMapper merchantEntityGroupMapper;
-
-    @Mock
-    private MerchantMapper merchantMapper;
-
-    @Mock
-    private HelpSupportService helpSupportService;
-
-    @Mock
-    private MerchantBankService merchantBankService;
-
-    @Mock
-    private MerchantUserValidator mIdValidator;
-
-    @InjectMocks
-    private AdminService adminService;
-
-    @Test
-    void testGetAllBranches_shouldReturnBranchListInMerchantResponse() {
-        // Arrange
-        String bankId = "BANK123";
-        List<BranchResponse> mockBranchList = Arrays.asList(
-                BranchResponse.builder().branchId("BR001").branchName("Branch 1").build(),
-                BranchResponse.builder().branchId("BR002").branchName("Branch 2").build()
-        );
-
-        Mockito.when(adminDao.getAllBranches(bankId)).thenReturn(mockBranchList);
-
-        // Act
-        MerchantResponse<BranchResponse> response = adminService.getAllBranches(bankId);
-
-        // Assert
-        assertNotNull(response);
-        assertEquals(2, response.getData().size());
-        assertEquals("BR001", response.getData().get(0).getBranchId());
-        assertEquals("BR002", response.getData().get(1).getBranchId());
-
-        Mockito.verify(adminDao, times(1)).getAllBranches(bankId);
+public MerchantResponse<BankResponse> getAllBanks(){
+        log.info("Fetching all banks from DAO");
+        List<BankResponse> bankResponseList = adminDao.getAllBanks();
+        log.info("Fetched all banks: {}", CollectionUtils.size(bankResponseList));
+        return MerchantResponse.<BankResponse>builder().data(bankResponseList).build();
     }
-}
+
+
+
+
+@Component
+@RequiredArgsConstructor
+public class AdminDao {
+
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+
+    private final MerchantRepository merchantRepository;
+    private final MerchantUserDao merchantUserDao;
+    private final MerchantEntityGroupRepository merchantEntityGroupRepository;
+    private final MerchantMapper mapper;
+    private final FooterRepository footerRepository;
+    private final AdminServicesClient adminServicesClient;
+
+    public List<BankResponse> getAllBanks() {
+        log.info("Fetching all banks from external service");
+        return adminServicesClient.getAllBanks();
+    }
+
+
+
+public class AdminServicesClient extends ApiClient {
+    public List<BankResponse> getAllBanks() {
+        return getList(BANK_ENDPOINT, new ParameterizedTypeReference<>() {});
+    }
