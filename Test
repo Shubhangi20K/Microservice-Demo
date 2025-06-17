@@ -1,56 +1,49 @@
+@ExtendWith(MockitoExtension.class)
+class PasswordServiceTest {
 
-@Service
-@RequiredArgsConstructor
-public class PasswordService {
+    @Mock
+    private PasswordValidator passwordValidator;
 
-    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+    @Mock
+    private PasswordManagementDao passwordManagementDao;
 
-    private final PasswordValidator passwordValidator;
-    private final PasswordManagementDao passwordManagementDao;
-    private final MerchantConfig merchantConfig;
+    @Mock
+    private MerchantConfig merchantConfig;
 
-    /**
-     * Handles the pwd change process for a user.
-     * @param pwdChangeRequest Request object containing userName, oldPwd, and newPwd.
-     * @return A success response with a message confirming pwd change.
-     */
-    public MerchantResponse<String> changePassword(PasswordChangeRequest pwdChangeRequest) {
-        try {
-            log.info("Starting pwd change process for user: {}", pwdChangeRequest.getUserName());
-            // Step 1: Validate mandatory pwd reset request
-            passwordValidator.validateChangePassword(pwdChangeRequest);
-            // Step 2 : Decrypt PWD
-            pwdChangeRequest.setNewPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdChangeRequest.getNewPassword()));
-            pwdChangeRequest.setConfirmPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdChangeRequest.getConfirmPassword()));
-            log.info("PWD change request decrypted successfully");
+    @InjectMocks
+    private PasswordService passwordService;
 
-            // Step 3: Validate the pwd change request
-            validatePasswordChange(pwdChangeRequest);
-            log.info("PWD change request validated successfully");
+    @Test
+    void testChangePassword_ValidationExceptionWithMandatoryError() {
+        // Arrange
+        PasswordChangeRequest request = new PasswordChangeRequest();
+        request.setUserName("testUser");
+        request.setNewPassword("encryptedNewPassword");
+        request.setConfirmPassword("encryptedConfirmPassword");
 
-            // Step 4: Update the pwd details in the database. Added active for firstLogin true
-            passwordManagementDao.updatePasswordDetails(pwdChangeRequest.getUserName(), pwdChangeRequest.getNewPassword(), List.of(UserStatus.ACTIVE,UserStatus.EXPIRED), RequestType.CHANGE_PASSWORD);
+        // Mock the decryption key
+        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
 
-            // Step 5: Build and return the success response
-            return MerchantResponse.<String>builder().status(RESPONSE_SUCCESS).data(List.of("Password Changed Successfully")).build();
-        } catch (ValidationException e) {
-            e.getErrorMessages().stream().filter(errorCode -> MANDATORY_ERROR_CODE.equals(errorCode.getErrorCode())).forEach(errorCode -> {
-                throw e;
-            });
-            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getErrorMessages().stream().map(ErrorDto::toString).collect(Collectors.joining(", ")));
-            log.error("PWD Change Request Validation Failed for PasswordChangeRequest {} ", pwdChangeRequest);
-            throw e;
-        } catch (MerchantException e) {
-            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getErrorMessage());
-            log.error("PWD Change Request Failed for PasswordChangeRequest {} ", pwdChangeRequest);
-            throw e;
-        } catch (Exception e) {
-            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getLocalizedMessage());
-            log.error("PWD Change Request Failed for PasswordChangeRequest {} ", pwdChangeRequest);
-            throw new MerchantException(GENERIC_ERROR_CODE, GENERIC_ERROR_MESSAGE);
-        }
+        // Create a mandatory error
+        ErrorDto mandatoryError = new ErrorDto();
+        mandatoryError.setErrorCode("MANDATORY_FIELD_MISSING");
+
+        // Create ValidationException with the mandatory error
+        ValidationException validationException = new ValidationException(List.of(mandatoryError));
+
+        // Make validator throw the exception
+        doThrow(validationException).when(passwordValidator).validateChangePassword(any());
+
+        // Act & Assert
+        ValidationException thrown = assertThrows(ValidationException.class, () -> {
+            passwordService.changePassword(request);
+        });
+
+        // Verify the error message or log (optional)
+        assertEquals(1, thrown.getErrorMessages().size());
+        assertEquals("MANDATORY_FIELD_MISSING", thrown.getErrorMessages().get(0).getErrorCode());
+
+        verify(passwordValidator).validateChangePassword(any());
+        verify(passwordManagementDao, never()).updatePasswordDetails(any(), any(), any(), any());
     }
-
-
-
-
+}
