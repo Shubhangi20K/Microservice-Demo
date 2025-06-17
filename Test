@@ -1,52 +1,47 @@
-@ExtendWith(MockitoExtension.class)
-class AdminServiceTest {
 
-    @Mock
-    private OnboardingValidator onboardingValidator;
-    
-    @Mock
-    private AdminValidator adminValidator;
 
-    @Mock
-    private AdminDao adminDao;
+@Service
+@RequiredArgsConstructor
+public class AdminService {
 
-    @Mock
-    private MerchantEntityGroupMapper merchantEntityGroupMapper;
+    private final OnboardingValidator onboardingValidator;
+    private final AdminValidator adminValidator;
+    private final AdminDao adminDao;
+    private final MerchantEntityGroupMapper merchantEntityGroupMapper;
+    private final MerchantMapper merchantMapper;
+    private final HelpSupportService helpSupportService;
+    private final MerchantBankService merchantBankService;
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+    private final MerchantUserValidator mIdValidator;
 
-    @Mock
-    private MerchantMapper merchantMapper;
-
-    @Mock
-    private HelpSupportService helpSupportService;
-
-    @Mock
-    private MerchantBankService merchantBankService;
-
-    @Mock
-    private MerchantUserValidator mIdValidator;
-
-    @InjectMocks
-    private AdminService adminService;
-
-    @Test
-    void testGetAllBanks_ShouldReturnBankList() {
-        // Arrange
-        BankResponse bank1 = new BankResponse("HDFC", "HDFC001");
-        BankResponse bank2 = new BankResponse("SBI", "SBI002");
-        List<BankResponse> mockBankList = List.of(bank1, bank2);
-
-        Mockito.when(adminDao.getAllBanks()).thenReturn(mockBankList);
-
-        // Act
-        MerchantResponse<BankResponse> response = adminService.getAllBanks();
-
-        // Assert
-        assertNotNull(response);
-        assertEquals(2, response.getData().size());
-        assertEquals("HDFC", response.getData().get(0).getBankName());
-        assertEquals("SBI002", response.getData().get(1).getBankCode());
-
-        // Verify interaction
-        Mockito.verify(adminDao).getAllBanks();
+    public MerchantResponse<BankDetailsResponse> getBankDetailsByIfscCode(String ifscCode){
+        log.info("Fetching bank details from DAO for IFSC Code: {}", ifscCode);
+        BankDetailsResponse bankDetailsResponse = adminDao.getBankDetailsByIfscCode(ifscCode);
+        log.info("Fetched bank details: {}", bankDetailsResponse);
+        return MerchantResponse.<BankDetailsResponse>builder().data(List.of(bankDetailsResponse)).build();
     }
-}
+
+
+
+@Component
+@RequiredArgsConstructor
+public class AdminDao {
+
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+
+    private final MerchantRepository merchantRepository;
+    private final MerchantUserDao merchantUserDao;
+    private final MerchantEntityGroupRepository merchantEntityGroupRepository;
+    private final MerchantMapper mapper;
+    private final FooterRepository footerRepository;
+    private final AdminServicesClient adminServicesClient;
+
+    public BankDetailsResponse getBankDetailsByIfscCode(String ifsc) {
+        log.info("Fetching bank details from external service for IFSC Code: {}", ifsc);
+        return adminServicesClient.getBankDetailsByIfscCode(ifsc).getFirst();
+    }
+
+public class AdminServicesClient extends ApiClient {
+    public List<BankDetailsResponse> getBankDetailsByIfscCode( String ifscCode) {
+        return getList(BANK_ENDPOINT + "/" + ifscCode, new ParameterizedTypeReference<>() {});
+    }
