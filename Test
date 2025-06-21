@@ -1,1 +1,64 @@
 
+@ExtendWith(MockitoExtension.class)
+class MerchantUserServiceTest {
+
+    @InjectMocks
+    private MerchantUserService merchantUserService;
+
+    @Mock
+    private MerchantInfoDao merchantInfoDao;
+
+    @Mock
+    private MerchantUserDao merchantUserDao;
+
+    @Mock
+    private MerchantUserRoleDao merchantUserRoleDao;
+
+    @Mock
+    private MerchantUserValidator merchantUserValidator;
+
+    @Mock
+    private MerchantMapper merchantMapper;
+
+    @Mock
+    private CSVGenerator csvGenerator;
+
+    @Test
+    void testSearchMerchantUsers_success() {
+        // Arrange
+        MerchantUserSearchRequest searchRequest = new MerchantUserSearchRequest();
+        searchRequest.setMId("MID123");
+
+        Pageable pageable = PageRequest.of(0, 10);
+
+        List<UUID> mappedUserIds = List.of(UUID.randomUUID(), UUID.randomUUID());
+        List<MerchantUserDto> userDtoList = List.of(
+                new MerchantUserDto(UUID.randomUUID(), "John", "john@example.com", "1234567890", "ADMIN", "ACTIVE"),
+                new MerchantUserDto(UUID.randomUUID(), "Doe", "doe@example.com", "9876543210", "USER", "INACTIVE")
+        );
+        Page<MerchantUserDto> userDtoPage = new PageImpl<>(userDtoList, pageable, userDtoList.size());
+
+        List<MerchantUserResponse> expectedResponseList = List.of(
+                new MerchantUserResponse("John", "john@example.com", "1234567890", "ADMIN", "ACTIVE"),
+                new MerchantUserResponse("Doe", "doe@example.com", "9876543210", "USER", "INACTIVE")
+        );
+
+        Mockito.doNothing().when(merchantUserValidator).validateUserSearchRequest(searchRequest);
+        Mockito.when(merchantUserDao.getMappedUserIdsByMid("MID123")).thenReturn(mappedUserIds);
+        Mockito.when(merchantUserDao.findMerchantUsers(pageable, searchRequest, mappedUserIds)).thenReturn(userDtoPage);
+        Mockito.when(merchantMapper.mapMerchantUserDTOListToResponseList(userDtoList)).thenReturn(expectedResponseList);
+
+        // Act
+        MerchantResponse<MerchantUserResponse> response = merchantUserService.searchMerchantUsers(pageable, searchRequest);
+
+        // Assert
+        assertEquals(RESPONSE_SUCCESS, response.getStatus());
+        assertEquals(2, response.getData().size());
+        assertEquals(2, response.getTotal());
+        assertEquals("John", response.getData().get(0).getFirstName());
+        verify(merchantUserValidator).validateUserSearchRequest(searchRequest);
+        verify(merchantUserDao).getMappedUserIdsByMid("MID123");
+        verify(merchantUserDao).findMerchantUsers(pageable, searchRequest, mappedUserIds);
+        verify(merchantMapper).mapMerchantUserDTOListToResponseList(userDtoList);
+    }
+}
