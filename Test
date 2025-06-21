@@ -1,70 +1,24 @@
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
 
-import java.util.UUID;
+@Component
+@RequiredArgsConstructor
+public class AdminDao {
 
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.MockitoAnnotations;
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
 
-public class AdminDaoTest {
-
-    @Mock
-    private MerchantRepository merchantRepository;
-
-    @Mock
-    private MerchantUserDao merchantUserDao;
-
-    @Mock
-    private MerchantEntityGroupRepository merchantEntityGroupRepository;
-
-    @Mock
-    private MerchantMapper mapper;
-
-    @Mock
-    private FooterRepository footerRepository;
-
-    @Mock
-    private AdminServicesClient adminServicesClient;
-
-    @Mock
-    private MerchantEntityUserRepository merchantEntityUserRepository;
-
-    @InjectMocks
-    private AdminDao adminDao;
-
-    @BeforeEach
-    void setUp() {
-        MockitoAnnotations.openMocks(this);
+    private final MerchantRepository merchantRepository;
+    private final MerchantUserDao merchantUserDao;
+    private final MerchantEntityGroupRepository merchantEntityGroupRepository;
+    private final MerchantMapper mapper;
+    private final FooterRepository footerRepository;
+    private final AdminServicesClient adminServicesClient;
+    private final MerchantEntityUserRepository merchantEntityUserReposi
+    public List<BankResponse> getAllBanks() {
+        log.info("Fetching all banks from external service");
+        return adminServicesClient.getAllBanks();
     }
 
-    @Test
-    void testIsMerchantUserExistByUserId_ReturnsTrue() {
-        // Arrange
-        UUID userId = UUID.randomUUID();
-        when(merchantUserDao.isMerchantUserExistByUserId(userId)).thenReturn(true);
 
-        // Act
-        boolean result = adminDao.isMerchantUserExistByUserId(userId);
-
-        // Assert
-        assertTrue(result);
-        verify(merchantUserDao, times(1)).isMerchantUserExistByUserId(userId);
+public class AdminServicesClient extends ApiClient {
+    public List<BankResponse> getAllBanks() {
+        return getList(BANK_ENDPOINT, new ParameterizedTypeReference<>() {});
     }
-
-    @Test
-    void testIsMerchantUserExistByUserId_ReturnsFalse() {
-        // Arrange
-        UUID userId = UUID.randomUUID();
-        when(merchantUserDao.isMerchantUserExistByUserId(userId)).thenReturn(false);
-
-        // Act
-        boolean result = adminDao.isMerchantUserExistByUserId(userId);
-
-        // Assert
-        assertFalse(result);
-        verify(merchantUserDao, times(1)).isMerchantUserExistByUserId(userId);
-    }
-}
