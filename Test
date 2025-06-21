@@ -1,1 +1,50 @@
+@ExtendWith(MockitoExtension.class)
+class AdminDaoTest {
 
+    @InjectMocks
+    private AdminDao adminDao;
+
+    @Mock
+    private MerchantRepository merchantRepository;
+
+    @Mock
+    private MerchantUserDao merchantUserDao;
+
+    @Mock
+    private MerchantEntityGroupRepository merchantEntityGroupRepository;
+
+    @Mock
+    private MerchantMapper mapper;
+
+    @Mock
+    private FooterRepository footerRepository;
+
+    @Mock
+    private AdminServicesClient adminServicesClient;
+
+    @Mock
+    private MerchantEntityUserRepository merchantEntityUserRepository;
+
+    @Test
+    void testGetBankDetailsByIfscCode() {
+        // Arrange
+        String ifscCode = "HDFC0001234";
+        BankDetailsResponse expectedResponse = new BankDetailsResponse();
+        expectedResponse.setBankName("HDFC Bank");
+        expectedResponse.setBranch("MG Road");
+
+        List<BankDetailsResponse> responseList = List.of(expectedResponse);
+
+        Mockito.when(adminServicesClient.getBankDetailsByIfscCode(ifscCode)).thenReturn(responseList);
+
+        // Act
+        BankDetailsResponse actualResponse = adminDao.getBankDetailsByIfscCode(ifscCode);
+
+        // Assert
+        Assertions.assertNotNull(actualResponse);
+        Assertions.assertEquals(expectedResponse.getBankName(), actualResponse.getBankName());
+        Assertions.assertEquals(expectedResponse.getBranch(), actualResponse.getBranch());
+
+        Mockito.verify(adminServicesClient).getBankDetailsByIfscCode(ifscCode);
+    }
+}
