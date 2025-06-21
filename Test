@@ -1,1 +1,55 @@
 
+@ExtendWith(MockitoExtension.class)
+class TokenDaoTest {
+
+    @InjectMocks
+    private TokenDao tokenDao;
+
+    @Mock
+    private TokenRepository tokenRepository;
+
+    @Test
+    void testGetTokenById() {
+        // Arrange
+        String tokenId = "abc123";
+        Token token = new Token();
+        token.setId(tokenId);
+        token.setValue("sample-token-value");
+
+        Mockito.when(tokenRepository.findById(tokenId)).thenReturn(Optional.of(token));
+
+        // Act
+        Optional<Token> result = tokenDao.getTokenById(tokenId);
+
+        // Assert
+        Assertions.assertTrue(result.isPresent());
+        Assertions.assertEquals("sample-token-value", result.get().getValue());
+        Mockito.verify(tokenRepository).findById(tokenId);
+    }
+
+    @Test
+    void testSaveToken() {
+        // Arrange
+        Token token = new Token();
+        token.setId("xyz456");
+        token.setValue("value-456");
+
+        // Act
+        tokenDao.saveToken(token);
+
+        // Assert
+        Mockito.verify(tokenRepository).save(token);
+    }
+
+    @Test
+    void testDeleteToken() {
+        // Arrange
+        String tokenId = "del789";
+
+        // Act
+        tokenDao.deleteToken(tokenId);
+
+        // Assert
+        Mockito.verify(tokenRepository).deleteById(tokenId);
+    }
+}
