@@ -1,49 +1,24 @@
-@ExtendWith(MockitoExtension.class)
-class PasswordServiceTest {
+@Component
+@RequiredArgsConstructor
+public class AdminDao {
 
-    @Mock
-    private PasswordValidator passwordValidator;
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
 
-    @Mock
-    private PasswordManagementDao passwordManagementDao;
-
-    @Mock
-    private MerchantConfig merchantConfig;
-
-    @InjectMocks
-    private PasswordService passwordService;
-
-    @Test
-    void testChangePassword_ValidationExceptionWithMandatoryError() {
-        // Arrange
-        PasswordChangeRequest request = new PasswordChangeRequest();
-        request.setUserName("testUser");
-        request.setNewPassword("encryptedNewPassword");
-        request.setConfirmPassword("encryptedConfirmPassword");
-
-        // Mock the decryption key
-        when(merchantConfig.getDecryptionKey()).thenReturn("dummyKey");
-
-        // Create a mandatory error
-        ErrorDto mandatoryError = new ErrorDto();
-        mandatoryError.setErrorCode("MANDATORY_FIELD_MISSING");
-
-        // Create ValidationException with the mandatory error
-        ValidationException validationException = new ValidationException(List.of(mandatoryError));
-
-        // Make validator throw the exception
-        doThrow(validationException).when(passwordValidator).validateChangePassword(any());
-
-        // Act & Assert
-        ValidationException thrown = assertThrows(ValidationException.class, () -> {
-            passwordService.changePassword(request);
-        });
-
-        // Verify the error message or log (optional)
-        assertEquals(1, thrown.getErrorMessages().size());
-        assertEquals("MANDATORY_FIELD_MISSING", thrown.getErrorMessages().get(0).getErrorCode());
-
-        verify(passwordValidator).validateChangePassword(any());
-        verify(passwordManagementDao, never()).updatePasswordDetails(any(), any(), any(), any());
+    private final MerchantRepository merchantRepository;
+    private final MerchantUserDao merchantUserDao;
+    private final MerchantEntityGroupRepository merchantEntityGroupRepository;
+    private final MerchantMapper mapper;
+    private final FooterRepository footerRepository;
+    private final AdminServicesClient adminServicesClient;
+    private final MerchantEntityUserRepository merchantEntityUserRepository;
+public BankDetailsResponse getBankDetailsByIfscCode(String ifsc) {
+        log.info("Fetching bank details from external service for IFSC Code: {}", ifsc);
+        return adminServicesClient.getBankDetailsByIfscCode(ifsc).getFirst();
     }
-}
+
+
+
+public class AdminServicesClient extends ApiClient {
+ public List<BankDetailsResponse> getBankDetailsByIfscCode( String ifscCode) {
+        return getList(BANK_ENDPOINT + "/" + ifscCode, new ParameterizedTypeReference<>() {});
+    }
