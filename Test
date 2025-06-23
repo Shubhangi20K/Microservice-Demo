@@ -1,1 +1,51 @@
 
+@ExtendWith(MockitoExtension.class)
+class AdminDaoTest {
+
+    @Mock
+    private MerchantRepository merchantRepository;
+
+    @Mock
+    private MerchantUserDao merchantUserDao;
+
+    @Mock
+    private MerchantEntityGroupRepository merchantEntityGroupRepository;
+
+    @Mock
+    private MerchantMapper mapper;
+
+    @Mock
+    private FooterRepository footerRepository;
+
+    @Mock
+    private AdminServicesClient adminServicesClient;
+
+    @Mock
+    private MerchantEntityUserRepository merchantEntityUserRepository;
+
+    @InjectMocks
+    private AdminDao adminDao;
+
+    @Test
+    void testGetAllBranches_returnsBranchList() {
+        // Arrange
+        String bankId = "BANK123";
+        List<BranchResponse> mockBranchList = List.of(
+            new BranchResponse("BR001", "Main Branch"),
+            new BranchResponse("BR002", "Sub Branch")
+        );
+
+        Mockito.when(adminServicesClient.getAllBranches(bankId)).thenReturn(mockBranchList);
+
+        // Act
+        List<BranchResponse> result = adminDao.getAllBranches(bankId);
+
+        // Assert
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals("BR001", result.get(0).getBranchCode());
+        assertEquals("Sub Branch", result.get(1).getBranchName());
+
+        Mockito.verify(adminServicesClient).getAllBranches(bankId);
+    }
+}
