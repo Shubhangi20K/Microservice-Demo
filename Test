@@ -1,1 +1,12 @@
+@Test
+void testGetBankDetails_handlesValidationException() {
+    String bankId = "BANK123";
 
+    Mockito.when(adminServicesClient.getBankDetails(bankId))
+           .thenThrow(new ValidationException("Invalid bank ID"));
+
+    BankDetailsResponse result = adminDao.getBankDetails(bankId);
+
+    assertNull(result); // or assert fallback behavior
+    Mockito.verify(adminServicesClient).getBankDetails(bankId);
+}
