@@ -1,43 +1,47 @@
+@ExtendWith(MockitoExtension.class)
+class AdminDaoTest {
 
-@Component
-@RequiredArgsConstructor
-public class AdminDao {
+    @InjectMocks
+    private AdminDao adminDao;
 
-    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+    @Mock
+    private MerchantRepository merchantRepository;
+    @Mock
+    private MerchantUserDao merchantUserDao;
+    @Mock
+    private MerchantEntityGroupRepository merchantEntityGroupRepository;
+    @Mock
+    private MerchantMapper mapper;
+    @Mock
+    private FooterRepository footerRepository;
+    @Mock
+    private AdminServicesClient adminServicesClient;
+    @Mock
+    private MerchantEntityUserRepository merchantEntityUserRepository;
 
-    private final MerchantRepository merchantRepository;
-    private final MerchantUserDao merchantUserDao;
-    private final MerchantEntityGroupRepository merchantEntityGroupRepository;
-    private final MerchantMapper mapper;
-    private final FooterRepository footerRepository;
-    private final AdminServicesClient adminServicesClient;
-    private final MerchantEntityUserRepository merchantEntityUserRepository;
-    public BankDetailsResponse getBankDetailsByIfscCode(String ifsc) {
-        log.info("Fetching bank details from external service for IFSC Code: {}", ifsc);
-        return adminServicesClient.getBankDetailsByIfscCode(ifsc).getFirst();
+    @Test
+    void testGetBankDetailsByIfscCode() {
+        // Arrange
+        String ifsc = "HDFC0001234";
+        BankDetailsResponse mockResponse = new BankDetailsResponse();
+        mockResponse.setBankName("HDFC Bank");
+        mockResponse.setBranch("Andheri");
+        mockResponse.setIfsc(ifsc);
+
+        List<BankDetailsResponse> responseList = List.of(mockResponse);
+
+        Mockito.when(adminServicesClient.getBankDetailsByIfscCode(ifsc)).thenReturn(responseList);
+
+        // Act
+        BankDetailsResponse result = adminDao.getBankDetailsByIfscCode(ifsc);
+
+        // Assert
+        Assertions.assertNotNull(result);
+        Assertions.assertEquals("HDFC Bank", result.getBankName());
+        Assertions.assertEquals("Andheri", result.getBranch());
+        Assertions.assertEquals(ifsc, result.getIfsc());
+
+        // Verify
+        Mockito.verify(adminServicesClient).getBankDetailsByIfscCode(ifsc);
     }
-
-
-
-
-public class AdminServicesClient extends ApiClient {
-
-    public static final String DOWNTIME_API_ENDPOINT = "/payMode/downtime";
-    public static final String MERCHANT_PAYMODE_API = "/merchant/payMode/";
-    public static final String BANK_ACCOUNT_VALIDATION = "/bank/validate";
-    public static final String BANK_ENDPOINT = "/bank";
-    public static final String BRANCH_DETAILS_ENDPOINT = "/bank/branch/";
-
-    public static final String DATA = "data";
-    public static final String PAY_MODES = "payModes";
-    public static final String PREFERRED_OPTIONS = "preferredOptions";
-    public static final String PAYMENT_OPTIONS = "otherPaymentOptions";
-    public static final String INB = "INB";
-    public static final String UPI = "UPI";
-    public static final String UPI_KEY_BHIMQR = "BHIMQR";
-    public static final String UPI_KEY_SELF = "self";
-
-    private final ObjectMapper mapper = new ObjectMapper();
-    public List<BankDetailsResponse> getBankDetailsByIfscCode( String ifscCode) {
-        return getList(BANK_ENDPOINT + "/" + ifscCode, new ParameterizedTypeReference<>() {});
-    }
+}
