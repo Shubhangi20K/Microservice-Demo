@@ -1,440 +1,195 @@
-package com.epay.merchant.validator;
+package com.epay.merchant.service;
 
+import com.epay.merchant.config.MerchantConfig;
 import com.epay.merchant.dao.PasswordManagementDao;
 import com.epay.merchant.dto.ErrorDto;
 import com.epay.merchant.dto.MerchantUserDto;
-import com.epay.merchant.entity.PasswordManagement;
 import com.epay.merchant.exception.MerchantException;
+import com.epay.merchant.exception.ValidationException;
 import com.epay.merchant.model.request.PasswordChangeRequest;
 import com.epay.merchant.model.request.PasswordResetRequest;
-import com.sbi.epay.encryptdecrypt.util.enums.HashAlgorithm;
+import com.epay.merchant.model.response.MerchantResponse;
+import com.epay.merchant.util.enums.RequestType;
+import com.epay.merchant.util.enums.UserStatus;
+import com.epay.merchant.validator.PasswordValidator;
 import com.sbi.epay.logging.utility.LoggerFactoryUtility;
 import com.sbi.epay.logging.utility.LoggerUtility;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Component;
-
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.text.MessageFormat;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.regex.Pattern;
-
-import static com.epay.merchant.util.ErrorConstants.*;
-
-@Component
-@RequiredArgsConstructor
-public class PasswordValidator extends BaseValidator {
-
-    // Define regex patterns for various pwd restrictions
-    private static final Pattern COMMON_WORDS = Pattern.compile(".*\\b(password|secret|admin|welcome|letmein|trustno1|qwerty|abc123)\b.*", Pattern.CASE_INSENSITIVE);
-    private static final Pattern PERSONAL_INFO = Pattern.compile(".*(\\d{2,4}-\\d{2}-\\d{2,4}|\\d{10,}|[a-zA-Z]{2,})+.*");
-    private static final Pattern PATTERNS = Pattern.compile(".*(aaabbb|QWERTY|zyxwvuts|123321|password1|1password).*", Pattern.CASE_INSENSITIVE);
-    private static final Pattern REPETITIVE_OR_SEQUENTIAL = Pattern.compile(".*(\\{3,}|(.)\\2{2,}|1234|abcd).*", Pattern.CASE_INSENSITIVE);
-
-    private final PasswordManagementDao passwordManagementDao;
-    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
-
-    public void validatePasswordUpdateWithDB(MerchantUserDto merchantUser, String newPassword, String oldPassword) {
-        errorDtoList = new ArrayList<>();
-        if (!isPasswordMatching(merchantUser.getPassword(), oldPassword)) {
-            errorDtoList.add(ErrorDto.builder().errorCode(INVALID_ERROR_CODE).errorMessage(MessageFormat.format(INVALID_ERROR_MESSAGE, OLD_PWD, ERROR_OLD_PSW_MISMATCH)).build());
-        } else if (isPasswordMatching(newPassword, oldPassword)) {
-            errorDtoList.add(ErrorDto.builder().errorCode(INVALID_ERROR_CODE).errorMessage(MessageFormat.format(INVALID_ERROR_MESSAGE, NEW_PWD, ERROR_NEW_PSW_SAME_AS_OLD)).build());
-        }
-        throwIfErrors();
-        passwordWithOldPasswords(merchantUser, newPassword);
-    }
-
-    /**
-     * Validate pwd with Db
-     *
-     * @param merchantUser MerchantUserDto
-     * @param newPwd  String
-     */
-    public void validatePasswordUpdateWithDB(MerchantUserDto merchantUser, String newPwd) {
-        errorDtoList = new ArrayList<>();
-        passwordWithOldPasswords(merchantUser, newPwd);
-    }
-
-    /**
-     * Validates all mandatory fields in PasswordChangeRequest
-     *
-     * @param passwordChangeRequest PasswordChangeRequest
-     */
-    public void validateMandatoryFields(PasswordChangeRequest passwordChangeRequest) {
-        log.info("Validating mandatory fields");
-        checkMandatoryField(passwordChangeRequest.getUserName(), USER_NAME);
-        checkMandatoryField(passwordChangeRequest.getOldPassword(), OLD_PWD);
-        checkMandatoryField(passwordChangeRequest.getNewPassword(), NEW_PWD);
-        checkMandatoryField(passwordChangeRequest.getConfirmPassword(), CONFIRM_PWD);
-        throwIfErrors();
-    }
-
-    /**
-     * Validates pwd format and match
-     *
-     * @param newPwd     String
-     * @param confirmPwd String
-     */
-    public void validatePasswordValue(String newPwd, String confirmPwd) {
-        errorDtoList = new ArrayList<>();
-        if (!newPwd.matches(PASSWORD_REGEX) || PERSONAL_INFO.pattern().matches(newPwd) || COMMON_WORDS.pattern().matches(newPwd) || PATTERNS.pattern().matches(newPwd) || REPETITIVE_OR_SEQUENTIAL.pattern().matches(newPwd)) {
-            errorDtoList.add(ErrorDto.builder().errorCode(INVALID_ERROR_CODE).errorMessage(MessageFormat.format(INVALID_ERROR_MESSAGE, NEW_PWD, "Reason : new-password does not meet the acceptance criteria")).build());
-        }
-        if (!isNewPasswordMatching(newPwd, confirmPwd)) {
-            errorDtoList.add(ErrorDto.builder().errorCode(INVALID_ERROR_CODE)
-                    .errorMessage(MessageFormat.format(INVALID_ERROR_MESSAGE, PSW, ERROR_NEW_AND_CONFIRM_PSW_MISMATCH)).build());
-        }
-        throwIfErrors();
-    }
-
-    private boolean isPasswordMatching(String storedHash, String inputPassword) {
-        return Arrays.equals(storedHash.getBytes(), inputPassword.getBytes());
-    }
-
-    private boolean isNewPasswordMatching(String newPassword, String confirmPassword) {
-        try {
-            MessageDigest md = MessageDigest.getInstance(HashAlgorithm.SHA_512.getAlgorithmName());
-            byte[] hashedNew = md.digest(newPassword.getBytes());
-            byte[] hashedConfirmed = md.digest(confirmPassword.getBytes());
-            return Arrays.equals(hashedNew, hashedConfirmed);
-        } catch (NoSuchAlgorithmException e) {
-            throw new MerchantException(INVALID_ERROR_CODE, "Error hashing password");
-        }
-    }
-
-    /**
-     * Validates pwd with old pwd in the database
-     *
-     * @param merchantUser MerchantUserDto
-     * @param newPwd  String
-     */
-    private void passwordWithOldPasswords(MerchantUserDto merchantUser, String newPwd) {
-        List<PasswordManagement> lastFiveRecords = passwordManagementDao.findLastPasswordsByUserId(merchantUser.getId());
-        lastFiveRecords.stream().filter(previousPassword -> isPasswordMatching(previousPassword.getPreviousPassword(), newPwd)).forEachOrdered(previousPassword -> errorDtoList.add(ErrorDto.builder().errorCode(INVALID_ERROR_CODE).errorMessage(MessageFormat.format(INVALID_ERROR_MESSAGE, NEW_PWD, ERROR_NEW_PSW_REUSED)).build()));
-        throwIfErrors();
-    }
-
-    /**
-     * Validates field in the OtpGenerationRequest for max length
-     *
-     * @param passwordChangeRequest PasswordChangeRequest
-     */
-    public void validateChangePassword(PasswordChangeRequest passwordChangeRequest) {
-        errorDtoList = new ArrayList<>();
-        validateMandatoryFields(passwordChangeRequest);
-        log.info("PWD change request validated successfully for mandatory field");
-        validateFieldsLength(passwordChangeRequest);
-        log.debug("validateFieldsLength completed for {}", passwordChangeRequest);
-        checkForLeadingTrailingAndSingleSpace(passwordChangeRequest);
-        log.debug("checkForLeadingTrailing validation completed for {}", passwordChangeRequest);
-        validateFieldsValue(passwordChangeRequest);
-        log.debug("Merchant field validation completed for {}", passwordChangeRequest);
-        throwIfErrors();
-    }
-
-    /**
-     * Validates field in the OtpGenerationRequest for max length
-     *
-     * @param passwordChangeRequest PasswordChangeRequest
-     */
-    public void validateFieldsLength(PasswordChangeRequest passwordChangeRequest) {
-        validateFieldLength(passwordChangeRequest.getUserName(), MAX_USER_NAME_LENGTH,USER_NAME);
-        validateFieldLength(passwordChangeRequest.getNewPassword(), MAX_PASSWORD_LENGTH, NEW_PWD);
-        validateFieldLength(passwordChangeRequest.getConfirmPassword(), MAX_PASSWORD_LENGTH, CONFIRM_PWD);
-        validateFieldLength(passwordChangeRequest.getOldPassword(), MAX_PASSWORD_LENGTH, OLD_PWD);
-        throwIfErrors();
-    }
-
-    /**
-     * Validates that all fields in the PasswordChangeRequest do not have leading, trailing, or multiple spaces.
-     *
-     * @param passwordChangeRequest The PasswordChangeRequest object containing the fields to validate.
-     */
-    private void checkForLeadingTrailingAndSingleSpace(PasswordChangeRequest passwordChangeRequest) {
-        checkForLeadingTrailingAndSingleSpace(passwordChangeRequest.getUserName(), USER_NAME);
-        checkForLeadingTrailingAndSingleSpace(passwordChangeRequest.getOldPassword(), OLD_PWD);
-        checkForLeadingTrailingAndSingleSpace(passwordChangeRequest.getNewPassword(), NEW_PWD);
-        checkForLeadingTrailingAndSingleSpace(passwordChangeRequest.getConfirmPassword(), CONFIRM_PWD);
-        throwIfErrors();
-    }
-
-    /**
-     * Validates the values of fields in the request object.
-     * @param passwordChangeRequest PasswordChangeRequest the request object containing user details to be validated.
-     */
-    private void validateFieldsValue(PasswordChangeRequest passwordChangeRequest) {
-        validateFieldWithRegex(passwordChangeRequest.getUserName(), ALLOWED_ALPHA_NUMERIC_REGEX, USER_NAME, INCORRECT_FORMAT);
-        throwIfErrors();
-    }
-
-    /**
-     * Validates the values of fields in the request object.
-     * @param passwordResetRequest PasswordResetRequest the request object containing user details to be validated.
-     */
-    public void validateResetPassword(PasswordResetRequest passwordResetRequest){
-        validateMandatoryFields(passwordResetRequest);
-        checkForLeadingTrailingForResetPassword(passwordResetRequest);
-        validateResetPasswordFieldsLength(passwordResetRequest);
-        validateFieldWithRegex(passwordResetRequest.getUserName(), USER_NAME_REGEX, USER_NAME, INVALID_FORMAT);
-        throwIfErrors();
-    }
-
-    /**
-     * Validates all mandatory fields in PasswordResetRequest
-     *
-     * @param passwordResetRequest PasswordResetRequest
-     */
-    public void validateMandatoryFields(PasswordResetRequest passwordResetRequest) {
-        errorDtoList = new ArrayList<>();
-        log.info("Validating mandatory fields");
-        checkMandatoryField(passwordResetRequest.getUserName(), USER_NAME);
-        checkMandatoryField(passwordResetRequest.getNewPassword(), NEW_PWD);
-        checkMandatoryField(passwordResetRequest.getConfirmPassword(), CONFIRM_PWD);
-        throwIfErrors();
-    }
-
-    /**
-     * Validates field in the validateResetPasswordFieldsLength for max length
-     *
-     * @param passwordResetRequest PasswordResetRequest
-     */
-    public void validateResetPasswordFieldsLength(PasswordResetRequest passwordResetRequest) {
-        validateFieldLength(passwordResetRequest.getUserName(), MAX_USER_NAME_LENGTH,USER_NAME);
-        validateFieldLength(passwordResetRequest.getNewPassword(), MAX_PASSWORD_LENGTH, PSW);
-        validateFieldLength(passwordResetRequest.getConfirmPassword(), MAX_PASSWORD_LENGTH, CONFIRM_PWD);
-        throwIfErrors();
-    }
-
-    /**
-     * Validates that all fields in the PasswordResetRequest do not have leading, trailing, or multiple spaces.
-     *
-     * @param passwordResetRequest The PasswordResetRequest object containing the fields to validate.
-     */
-    private void checkForLeadingTrailingForResetPassword(PasswordResetRequest passwordResetRequest) {
-        checkForLeadingTrailingAndSingleSpace(passwordResetRequest.getUserName(), USER_NAME);
-        checkForLeadingTrailingAndSingleSpace(passwordResetRequest.getNewPassword(), NEW_PWD);
-        checkForLeadingTrailingAndSingleSpace(passwordResetRequest.getConfirmPassword(), CONFIRM_PWD);
-        throwIfErrors();
-    }
-
-}
-
-package com.epay.merchant.validator;
-
-import com.epay.merchant.dto.ErrorDto;
-import com.epay.merchant.exception.ValidationException;
-import org.apache.commons.collections4.CollectionUtils;
-import org.apache.commons.lang3.EnumUtils;
-import org.apache.commons.lang3.ObjectUtils;
 import org.apache.commons.lang3.StringUtils;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.stereotype.Service;
+
 import java.text.MessageFormat;
-import java.util.*;
-import java.util.regex.Pattern;
-import static com.epay.merchant.util.DateTimeUtils.getCurrentTimeInMills;
+import java.util.List;
+import java.util.stream.Collectors;
+
+import static com.epay.merchant.util.EncryptionDecryptionUtil.decryptValue;
+import static com.epay.merchant.util.EncryptionDecryptionUtil.hashValue;
 import static com.epay.merchant.util.ErrorConstants.*;
+
 /**
- * Class Name:BaseValidator
+ * Class Name: PasswordService
  * *
- * Description: BaseValidator is a base class for all validators, providing common functionality
- * for storing and managing validation errors.
+ * Description:
  * *
- * Author: Bhoopendra Rajput
+ * Author: Subhra Goswami
  * <p>
  * Copyright (c) 2024 [State Bank of India]
- * All right reserved
+ * All rights reserved
  * *
  * Version:1.0
  */
-public class BaseValidator {
+@Service
+@RequiredArgsConstructor
+public class PasswordService {
 
-    List<ErrorDto> errorDtoList;
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+
+    private final PasswordValidator passwordValidator;
+    private final PasswordManagementDao passwordManagementDao;
+    private final MerchantConfig merchantConfig;
 
     /**
-     * Check mandatory field
+     * Handles the pwd change process for a user.
+     * @param pwdChangeRequest Request object containing userName, oldPwd, and newPwd.
+     * @return A success response with a message confirming pwd change.
+     */
+    public MerchantResponse<String> changePassword(PasswordChangeRequest pwdChangeRequest) {
+        try {
+            log.info("Starting pwd change process for user: {}", pwdChangeRequest.getUserName());
+            // Step 1: Validate mandatory pwd reset request
+            passwordValidator.validateChangePassword(pwdChangeRequest);
+            // Step 2 : Decrypt PWD
+            pwdChangeRequest.setNewPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdChangeRequest.getNewPassword()));
+            pwdChangeRequest.setConfirmPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdChangeRequest.getConfirmPassword()));
+            log.info("PWD change request decrypted successfully");
+
+            // Step 3: Validate the pwd change request
+            validatePasswordChange(pwdChangeRequest);
+            log.info("PWD change request validated successfully");
+
+            // Step 4: Update the pwd details in the database. Added active for firstLogin true
+            passwordManagementDao.updatePasswordDetails(pwdChangeRequest.getUserName(), pwdChangeRequest.getNewPassword(), List.of(UserStatus.ACTIVE,UserStatus.EXPIRED), RequestType.CHANGE_PASSWORD);
+
+            // Step 5: Build and return the success response
+            return MerchantResponse.<String>builder().status(RESPONSE_SUCCESS).data(List.of("Password Changed Successfully")).build();
+        } catch (ValidationException e) {
+            e.getErrorMessages().stream().filter(errorCode -> MANDATORY_ERROR_CODE.equals(errorCode.getErrorCode())).forEach(errorCode -> {
+                throw e;
+            });
+            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getErrorMessages().stream().map(ErrorDto::toString).collect(Collectors.joining(", ")));
+            log.error("PWD Change Request Validation Failed for PasswordChangeRequest {} ", pwdChangeRequest);
+            throw e;
+        } catch (MerchantException e) {
+            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getErrorMessage());
+            log.error("PWD Change Request Failed for PasswordChangeRequest {} ", pwdChangeRequest);
+            throw e;
+        } catch (Exception e) {
+            handlePasswordFailure(pwdChangeRequest.getUserName(), RequestType.CHANGE_PASSWORD, e.getLocalizedMessage());
+            log.error("PWD Change Request Failed for PasswordChangeRequest {} ", pwdChangeRequest);
+            throw new MerchantException(GENERIC_ERROR_CODE, GENERIC_ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Handles the pwd reset process for a user.
+     * @param pwdResetRequest Request object containing userName, newPwd, and confirmPwd.
+     * @return A success response with a message confirming pwd reset.
+     */
+    public MerchantResponse<String> resetPassword(PasswordResetRequest pwdResetRequest) {
+        try {
+            log.info("Starting pwd reset process for user: {}", pwdResetRequest.getUserName());
+            // Step 1 : ValidateResetPassword
+            passwordValidator.validateResetPassword(pwdResetRequest);
+            // Step 2 : Decrypt PWD
+            pwdResetRequest.setNewPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdResetRequest.getNewPassword()));
+            pwdResetRequest.setConfirmPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdResetRequest.getConfirmPassword()));
+            log.info("PWD reset request decrypted successfully");
+
+            // Step 3: Validate the pwd reset request
+            validatePasswordReset(pwdResetRequest);
+            log.info("pwd reset request validated successfully");
+
+            // Step 4: Update the pwd details in the database
+            passwordManagementDao.updatePasswordDetails(pwdResetRequest.getUserName(), pwdResetRequest.getNewPassword(), List.of(UserStatus.ACTIVE, UserStatus.EXPIRED), RequestType.RESET_PASSWORD);
+
+            // Step 5: Build and return the success response
+            return MerchantResponse.<String>builder().status(RESPONSE_SUCCESS).data(List.of(PWD_RESET_SUCCESSFULLY)).build();
+        } catch (ValidationException e) {
+            e.getErrorMessages().stream().filter(errorCode -> MANDATORY_ERROR_CODE.equals(errorCode.getErrorCode())).forEach(errorCode -> {
+                throw e;
+            });
+            handlePasswordFailure(pwdResetRequest.getUserName(), RequestType.RESET_PASSWORD, e.getErrorMessages().stream().map(ErrorDto::toString).collect(Collectors.joining(", ")));
+            log.error("PWD Reset Request Validation Failed for passwordResetRequest {} ", pwdResetRequest);
+            throw e;
+        } catch (MerchantException e) {
+            handlePasswordFailure(pwdResetRequest.getUserName(), RequestType.RESET_PASSWORD, e.getErrorMessage());
+            log.error("MerchantException : PWD Reset Request Failed for passwordResetRequest {} ", pwdResetRequest);
+            throw e;
+        } catch (Exception e) {
+            handlePasswordFailure(pwdResetRequest.getUserName(), RequestType.RESET_PASSWORD, e.getLocalizedMessage());
+            log.error("Generic Exception : PWD Reset Request Failed for passwordResetRequest {} ", pwdResetRequest);
+            throw new MerchantException(GENERIC_ERROR_CODE, GENERIC_ERROR_MESSAGE);
+        }
+    }
+
+    /**
+     * Validates the pwd change request for a user.
      *
-     * @param value     String
-     * @param fieldName String
+     * @param pwdChangeRequest The request object containing userName, oldPwd, and newPwd.
      */
-    protected void checkMandatoryField(String value, String fieldName) {
-        if (StringUtils.isEmpty(StringUtils.strip(value)) || StringUtils.equalsAnyIgnoreCase(value, "null")) {
-            addError(fieldName, MANDATORY_ERROR_CODE, MANDATORY_ERROR_MESSAGE);
+    private void validatePasswordChange(PasswordChangeRequest pwdChangeRequest) {
+        log.info("Validating pwd change request for user: {}", pwdChangeRequest.getUserName());
+        passwordValidator.validatePasswordValue(pwdChangeRequest.getNewPassword(), pwdChangeRequest.getConfirmPassword());
+        //User can change the pwd if firstLogin is true(1)
+        MerchantUserDto merchantUser = passwordManagementDao.findByUserNameOrEmailOrMobilePhoneAndStatus(pwdChangeRequest.getUserName(), List.of(UserStatus.EXPIRED, UserStatus.ACTIVE));
+        if( UserStatus.ACTIVE != merchantUser.getStatus()) {
+            throw new MerchantException(NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, List.of(UserStatus.EXPIRED) + " " + MERCHANT_USER));
         }
+        String passwordHashValue = hashValue(pwdChangeRequest.getNewPassword());
+        passwordValidator.validatePasswordUpdateWithDB(merchantUser, passwordHashValue, pwdChangeRequest.getOldPassword());
+        log.info("Successfully validated pwd change request for user: {}", pwdChangeRequest.getUserName());
     }
 
     /**
-     * Check mandatory field
+     * Validates the pwd reset request for a user.
      *
-     * @param value     UUID
-     * @param fieldName String
+     * @param pwdResetRequest The request object containing userName, newPwd, and confirmPwd.
      */
-    protected void checkMandatoryField(UUID value, String fieldName) {
-        if (ObjectUtils.isEmpty(value)) {
-            addError(fieldName, MANDATORY_ERROR_CODE, MANDATORY_ERROR_MESSAGE);
-        }
+    private void validatePasswordReset(PasswordResetRequest pwdResetRequest) {
+        log.info("Validating pwd reset request for user: {}", pwdResetRequest.getUserName());
+        passwordValidator.validatePasswordValue(pwdResetRequest.getNewPassword(), pwdResetRequest.getConfirmPassword());
+        MerchantUserDto merchantUser = passwordManagementDao.findByUserNameOrEmailOrMobilePhoneAndStatus(pwdResetRequest.getUserName(), List.of(UserStatus.ACTIVE, UserStatus.EXPIRED));
+        String passwordHashValue = hashValue(pwdResetRequest.getNewPassword());
+        passwordValidator.validatePasswordUpdateWithDB(merchantUser, passwordHashValue);
+        log.info("Successfully validated pwd reset request for user: {}", pwdResetRequest.getUserName());
     }
 
     /**
-     * Check mandatory collection
+     * Handles pwd operation failures by saving an audit log.
      *
-     * @param collection Collection
-     * @param fieldName  String
+     * @param userName    The username associated with the failure.
+     * @param requestType The type of pwd operation (change/reset).
+     * @param e   The error message to log.
      */
-    protected void checkMandatoryCollection(Collection<?> collection, String fieldName) {
-        if (CollectionUtils.isEmpty(collection)) {
-            addError(fieldName, MANDATORY_ERROR_CODE, MANDATORY_ERROR_MESSAGE);
+    private void handlePasswordFailure(String userName, RequestType requestType, String e) {
+        log.info("Handling pwd failure for user: {}, RequestType: {}", userName, requestType);
+        if (StringUtils.isNotEmpty(userName)) {
+            try {
+                passwordManagementDao.saveAudit(userName, requestType, false, e);
+            } catch (MerchantException ex) {
+                log.error("MerchantException in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getErrorMessage());
+            } catch (Exception ex) {
+                log.error("Generic Error in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getMessage());
+            }
         }
     }
 
     /**
-     * Check mandatory fields
-     *
-     * @param fieldName String
-     * @param values    String...
+     * Service to call expire pwd for users pwd expiry date of pwd.
      */
-    protected void checkMandatoryFields(String fieldName, String... values) {
-        boolean allEmpty = Arrays.stream(values).allMatch(StringUtils::isEmpty);
-        if (allEmpty) {
-            addError(fieldName, MANDATORY_ERROR_CODE, MANDATORY_ERROR_MESSAGE);
-        }
+    public void processUsersWithExpiredPassword() {
+        passwordManagementDao.processUsersWithExpiredPassword();
     }
-
-    /**
-     * Check mandatary date field
-     *
-     * @param date      Long
-     * @param fieldName String
-     */
-    protected void checkMandatoryDateField(Long date, String fieldName) {
-        if (ObjectUtils.isEmpty(date) || date < 0) {
-            addError(fieldName, MANDATORY_ERROR_CODE, MANDATORY_ERROR_MESSAGE);
-        }
-    }
-
-    protected void validateFieldLength(String value, int maxLength, String fieldName) {
-        if (StringUtils.isNotEmpty(value) && value.length() > maxLength) {
-            addError(MAX_ALLOWED_LENGTH_ERROR_CODE, MAX_ALLOWED_LENGTH_ERROR_MESSAGE, fieldName, maxLength);
-        }
-    }
-
-    protected void validateDateFieldForPastDate(Long date, String fieldName) {
-        if (date < MIN_TIMESTAMP || getCurrentTimeInMills() < date) {
-            addError(INVALID_ERROR_CODE, INVALID_ERROR_MESSAGE, fieldName, GREATER_THEN_CURRENT_DATE_OR_NOT_HAVING_FORMAT);
-        }
-    }
-
-    protected void validateDateFieldForFutureDate(Long date, String fieldName) {
-        if (date > MAX_TIMESTAMP || getCurrentTimeInMills() > date) {
-            addError(INVALID_ERROR_CODE, INVALID_ERROR_MESSAGE, fieldName, LESS_THEN_CURRENT_DATE_OR_NOT_HAVING_FORMAT);
-        }
-    }
-
-    protected void validateFieldWithRegex(String value, int maxLength, String regex, String fieldName, String message) {
-        if (StringUtils.isNotEmpty(value) && (value.length() > maxLength || validate(value, regex))) {
-            addError(fieldName, INVALID_FORMAT_OR_MAX_LEN_ERROR_CODE, message + " " + maxLength);
-        }
-    }
-
-    protected void validateFieldWithRegex(String value, String regex, String fieldName, String reason) {
-        if (StringUtils.isNotEmpty(value) && validate(value, regex)) {
-            addError(fieldName, INVALID_ERROR_CODE, MessageFormat.format(INVALID_ERROR_MESSAGE, fieldName, reason));
-        }
-    }
-
-    protected void validateFieldValue(String value, String validValue, String fieldName) {
-        if (!validValue.equalsIgnoreCase(value)) {
-            addError(fieldName, INVALID_ENUM_ERROR_CODE, INVALID_ENUM_ERROR_MESSAGE);
-        }
-    }
-
-    protected void validateFieldValue(String value, List<String> validValues, String fieldName) {
-        if(StringUtils.isNotEmpty(value) && validValues.stream().noneMatch(validValue -> validValue.equals(value))) {
-                addError(fieldName, INVALID_ENUM_ERROR_CODE, INVALID_ENUM_ERROR_MESSAGE);
-        }
-    }
-
-    protected <E extends Enum<E>> void validateFieldValue(Enum<E> value, String fieldName, Class<E> enumName) {
-        if (Objects.isNull(value)) {
-            addError(INVALID_ERROR_CODE, INVALID_ERROR_MESSAGE, fieldName, "Valid values are " + EnumUtils.getEnumList(enumName));
-        }
-    }
-
-    protected void addError(String fieldName, String errorCode, String errorMessage) {
-        errorDtoList.add(ErrorDto.builder().errorCode(errorCode).errorMessage(MessageFormat.format(errorMessage, fieldName)).build());
-    }
-
-    protected void addError(String errorCode, String errorMessage, Object... fieldNames) {
-        errorDtoList.add(ErrorDto.builder().errorCode(errorCode).errorMessage(MessageFormat.format(errorMessage, fieldNames)).build());
-    }
-
-    protected void throwIfErrors() {
-        if (CollectionUtils.isNotEmpty(errorDtoList)) {
-            throw new ValidationException(errorDtoList);
-        }
-    }
-
-    protected boolean validate(String value, String regex) {
-        return !Pattern.matches(regex, value);
-    }
-
-    /***
-     * Description : checkForLeadingTrailingAndSingleSpace method are being used for checking input
-     * parameter having any leading trailing space in it or not and returns error message if
-     * input parameter has any leading or trailing space in it.
-     * @param value String
-     * @param fieldName String
-     */
-    protected void checkForLeadingTrailingAndSingleSpace(String value, String fieldName) {
-        if (StringUtils.isNotEmpty(value) && !value.equals(value.trim())) {
-            addError(fieldName, WHITESPACE_ERROR_CODE, WHITESPACE_ERROR_MESSAGE);
-        }
-    }
-
-    /**
-     * Validate if field value length is not equal to required length.
-     * @param value String
-     * @param maxLength int
-     * @param fieldName String
-     */
-    protected void validateFixedFieldLength(String value, int maxLength, String fieldName) {
-        if (StringUtils.isNotEmpty(value) && value.length() != maxLength) {
-            addError(FIXED_LENGTH_ERROR_CODE, FIXED_LENGTH_ERROR_MESSAGE, fieldName, maxLength);
-        }
-    }
-
-    protected void validateDuplicateValue(List values, String fieldName, String reason) {
-        Set uniqueValues = new HashSet<>();
-        if (!values.isEmpty() && values.stream().anyMatch(v -> !uniqueValues.add(v))) {
-            addError(INVALID_ERROR_CODE, INVALID_ERROR_MESSAGE, fieldName, reason);
-
-        }
-    }
-
-    /**
-     * Helper method to validates field values in the Pageable.
-     * @param pageable Pageable
-     * @param maxSize int
-     * @param defaultSortField String
-     * @return {pageable}
-     */
-    protected Pageable validateAndSanitizePageable(Pageable pageable, int maxSize, String defaultSortField,Set<String> sortList) {
-        // Validate page size
-        if (pageable.getPageSize() > maxSize) {
-            addError(MAX_ALLOWED_LENGTH_ERROR_CODE, MAX_ALLOWED_LENGTH_ERROR_MESSAGE, PAGE_SIZE, maxSize);
-        }
-        // Get allowed fields from class
-        boolean hasInvalidSort = pageable.getSort().stream().anyMatch(order -> !sortList.contains(order.getProperty()));
-        // If any invalid sort field, craete to default
-        if (pageable.getSort().isUnsorted() || hasInvalidSort) {
-            return PageRequest.of(pageable.getPageNumber(), pageable.getPageSize(), Sort.by(Sort.Direction.DESC, defaultSortField));
-        }
-        return pageable;
-    }
-
-
 }
+
+
