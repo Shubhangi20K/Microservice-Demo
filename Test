@@ -1,1 +1,114 @@
 
+@ExtendWith(MockitoExtension.class)
+class AdminDaoTest {
+
+    @Mock
+    private MerchantRepository merchantRepository;
+
+    @Mock
+    private MerchantUserDao merchantUserDao;
+
+    @Mock
+    private MerchantEntityGroupRepository merchantEntityGroupRepository;
+
+    @Mock
+    private MerchantMapper mapper;
+
+    @Mock
+    private FooterRepository footerRepository;
+
+    @Mock
+    private AdminServicesClient adminServicesClient;
+
+    @Mock
+    private MerchantEntityUserRepository merchantEntityUserRepository;
+
+    @InjectMocks
+    private AdminDao adminDao;
+
+    @Test
+    void testGetAllBranches_returnsBranchList() {
+        String bankId = "BANK123";
+        List<BranchResponse> mockBranchList = List.of(
+            new BranchResponse("BR001", "Main Branch"),
+            new BranchResponse("BR002", "Sub Branch")
+        );
+
+        Mockito.when(adminServicesClient.getAllBranches(bankId)).thenReturn(mockBranchList);
+
+        List<BranchResponse> result = adminDao.getAllBranches(bankId);
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertEquals("BR001", result.get(0).getBranchCode());
+        assertEquals("Sub Branch", result.get(1).getBranchName());
+        Mockito.verify(adminServicesClient).getAllBranches(bankId);
+    }
+
+    @Test
+    void testGetBankDetails_returnsBankDetailsResponse() {
+        String bankId = "BANK999";
+        BankDetailsResponse mockResponse = new BankDetailsResponse();
+        mockResponse.setBankName("Test Bank");
+        mockResponse.setBankId("BANK999");
+
+        Mockito.when(adminServicesClient.getBankDetails(bankId)).thenReturn(mockResponse);
+
+        BankDetailsResponse result = adminDao.getBankDetails(bankId);
+
+        assertNotNull(result);
+        assertEquals("Test Bank", result.getBankName());
+        Mockito.verify(adminServicesClient).getBankDetails(bankId);
+    }
+
+    @Test
+    void testIsMerchantActive_returnsTrue() {
+        String merchantId = "MER123";
+
+        Merchant merchant = new Merchant();
+        merchant.setMerchantId(merchantId);
+        merchant.setIsActive(true);
+
+        Mockito.when(merchantRepository.findByMerchantId(merchantId)).thenReturn(Optional.of(merchant));
+
+        boolean result = adminDao.isMerchantActive(merchantId);
+
+        assertTrue(result);
+        Mockito.verify(merchantRepository).findByMerchantId(merchantId);
+    }
+
+    @Test
+    void testIsMerchantActive_returnsFalse_whenMerchantNotFound() {
+        String merchantId = "INVALID";
+
+        Mockito.when(merchantRepository.findByMerchantId(merchantId)).thenReturn(Optional.empty());
+
+        boolean result = adminDao.isMerchantActive(merchantId);
+
+        assertFalse(result);
+        Mockito.verify(merchantRepository).findByMerchantId(merchantId);
+    }
+
+    @Test
+    void testGetMerchantUserDetails_returnsUserDto() {
+        String userId = "USER123";
+
+        MerchantUser merchantUser = new MerchantUser();
+        merchantUser.setUserId(userId);
+        merchantUser.setEmail("user@example.com");
+
+        MerchantUserDto userDto = new MerchantUserDto();
+        userDto.setUserId(userId);
+        userDto.setEmail("user@example.com");
+
+        Mockito.when(merchantUserDao.getUserById(userId)).thenReturn(merchantUser);
+        Mockito.when(mapper.toMerchantUserDto(merchantUser)).thenReturn(userDto);
+
+        MerchantUserDto result = adminDao.getMerchantUserDetails(userId);
+
+        assertNotNull(result);
+        assertEquals("user@example.com", result.getEmail());
+        Mockito.verify(merchantUserDao).getUserById(userId);
+        Mockito.verify(mapper).toMerchantUserDto(merchantUser);
+    }
+}
