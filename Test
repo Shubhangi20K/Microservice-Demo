@@ -1,1 +1,64 @@
 
+@ExtendWith(MockitoExtension.class)
+class AlertDaoTest {
+
+    @Mock
+    private AlertMasterRepository alertMasterRepository;
+
+    @Mock
+    private AlertManagementRepository alertManagementRepository;
+
+    @Mock
+    private MerchantInfoDao merchantInfoDao;
+
+    @Mock
+    private AlertMapper alertMapper;
+
+    @InjectMocks
+    private AlertDao alertDao;
+
+    @Test
+    void testGenerateAlertForReport_Success() {
+        // Arrange
+        ReportAlertDto reportAlertDto = new ReportAlertDto();
+        reportAlertDto.setReportName("Daily Report");
+        reportAlertDto.setMId("MID123");
+
+        AlertMaster alertMaster = new AlertMaster();
+        alertMaster.setId(UUID.randomUUID());
+        alertMaster.setName(MerchantConstant.REPORT_GENERATION);
+        alertMaster.setDescription("Report {0} is generated");
+
+        when(alertMasterRepository.findByName(MerchantConstant.REPORT_GENERATION)).thenReturn(Optional.of(alertMaster));
+
+        // Act
+        alertDao.generateAlertForReport(reportAlertDto);
+
+        // Assert
+        verify(alertMasterRepository).findByName(MerchantConstant.REPORT_GENERATION);
+        verify(alertManagementRepository).save(argThat(alert -> 
+            alert.getAlertId().equals(alertMaster.getId()) &&
+            alert.getAlertDescription().equals("Report Daily Report is generated") &&
+            alert.getMId().equals("MID123") &&
+            !alert.getIsViewed() &&
+            alert.getAlertIdentifier().length() == 12
+        ));
+    }
+
+    @Test
+    void testGenerateAlertForReport_AlertMasterNotFound() {
+        // Arrange
+        ReportAlertDto reportAlertDto = new ReportAlertDto();
+        reportAlertDto.setReportName("Daily Report");
+        reportAlertDto.setMId("MID123");
+
+        when(alertMasterRepository.findByName(MerchantConstant.REPORT_GENERATION)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        MerchantException exception = assertThrows(MerchantException.class,
+            () -> alertDao.generateAlertForReport(reportAlertDto));
+
+        assertEquals(ErrorConstants.NOT_FOUND_ERROR_CODE, exception.getErrorCode());
+        assertTrue(exception.getMessage().contains("Alert name"));
+    }
+}
