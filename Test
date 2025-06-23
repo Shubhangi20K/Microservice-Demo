@@ -1,15 +1,11 @@
-@AllArgsConstructor
-@Getter
-@Setter
-@Builder
-@NoArgsConstructor
-@JsonInclude(JsonInclude.Include.NON_NULL)
-public class AlertManagementResponse {
-    private String alertDescription;
-    private long alertIdentifier;
-    private boolean isViewed;
-    private Long createdAt;
-}
+Page<AlertManagement> alertEntities = alertManagementRepository.findAll(pageable);
 
+// Suppose you're mapping entity to response
+Page<AlertManagementResponse> alertPage = alertEntities.map(alert -> AlertManagementResponse.builder()
+        .alertDescription(alert.getDescription())
+        .alertIdentifier(alert.getId())
+        .isViewed(alert.isViewed())
+        .createdAt(alert.getCreatedAt())
+        .build());
 
- Page<AlertManagementResponse>
+List<AlertManagementResponse> alertList = alertPage.getContent();
