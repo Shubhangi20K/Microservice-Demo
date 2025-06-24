@@ -1,15 +1,1 @@
 
-
-@Component
-@RequiredArgsConstructor
-public class AdminDao {
-
-    public List<BranchResponse> getAllBranches(String bankId) {
-        log.info("Fetching all branches for bank ID {} from external service", bankId);
-        return adminServicesClient.getAllBranches(bankId);
-    }    
-
-public class AdminServicesClient extends ApiClient {
-    public List<BranchResponse> getAllBranches(String bankId) {
-        return getList(BRANCH_DETAILS_ENDPOINT + bankId, new ParameterizedTypeReference<>() {});
-    }
