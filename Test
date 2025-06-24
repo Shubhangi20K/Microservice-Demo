@@ -1,1 +1,65 @@
+@ExtendWith(MockitoExtension.class)
+class MerchantUserDaoTest {
 
+    @Mock private MerchantUserRepository merchantUserRepository;
+    @Mock private UserMenuPermissionRepository userMenuPermissionRepository;
+    @Mock private DefaultUserPermissionRepository defaultUserPermissionRepository;
+    @Mock private MenuInfoRepository menuInfoRepository;
+    @Mock private MerchantEntityUserRepository merchantEntityUserRepository;
+    @Mock private PermissionRepository permissionRepository;
+    @Mock private MerchantUserRoleRepository merchantUserRoleRepository;
+    @Mock private MerchantEntityGroupRepository merchantEntityGroupRepository;
+    @Mock private MerchantUserRoleDao merchantUserRoleDao;
+    @Mock private NotificationDao notificationDao;
+    @Mock private MerchantMapper merchantMapper;
+    @Mock private MerchantConfig merchantConfig;
+    @Mock private PasswordGenerator passwordGenerator;
+
+    @InjectMocks
+    private MerchantUserDao merchantUserDao;
+
+    @Test
+    void testFindMerchantUsers() {
+        // Arrange
+        Pageable pageable = PageRequest.of(0, 10);
+        MerchantUserSearchRequest request = new MerchantUserSearchRequest();
+        request.setUserName("testuser");
+        request.setFirstName("John");
+        request.setMobilePhone("1234567890");
+        request.setFromDate(LocalDate.now().minusDays(10));
+        request.setToDate(LocalDate.now());
+        request.setStatus(UserStatus.ACTIVE);
+        List<UUID> mappedUserIds = List.of(UUID.randomUUID());
+
+        UUID merchantUserId = UUID.randomUUID();
+        MerchantUser merchantUser = new MerchantUser();
+        merchantUser.setId(merchantUserId);
+        merchantUser.setUserName("testuser");
+
+        MerchantUserDto mockLoggedInUser = new MerchantUserDto();
+        mockLoggedInUser.setId(merchantUserId);
+
+        MerchantUserDto dto = new MerchantUserDto();
+        dto.setUserName("testuser");
+
+        Page<MerchantUser> mockPage = new PageImpl<>(List.of(merchantUser));
+
+        try (MockedStatic<EPayIdentityUtil> mockedStatic = Mockito.mockStatic(EPayIdentityUtil.class)) {
+            PrincipalDto principalDto = new PrincipalDto();
+            principalDto.setUsername("testuser");
+
+            mockedStatic.when(EPayIdentityUtil::getUserPrincipal).thenReturn(principalDto);
+            Mockito.when(merchantUserDao.getByUserName("testuser", UserStatus.ACTIVE)).thenReturn(mockLoggedInUser);
+            Mockito.when(merchantUserRepository.findAll(Mockito.any(), Mockito.eq(pageable))).thenReturn(mockPage);
+            Mockito.when(merchantUserDao.convertEntityToDTO(merchantUser)).thenReturn(dto);
+
+            // Act
+            Page<MerchantUserDto> result = merchantUserDao.findMerchantUsers(pageable, request, mappedUserIds);
+
+            // Assert
+            assertNotNull(result);
+            assertEquals(1, result.getTotalElements());
+            assertEquals("testuser", result.getContent().get(0).getUserName());
+        }
+    }
+}
