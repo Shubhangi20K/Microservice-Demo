@@ -1,12 +1,31 @@
-@Test
-void testGetBankDetails_handlesValidationException() {
-    String bankId = "BANK123";
 
-    Mockito.when(adminServicesClient.getBankDetails(bankId))
-           .thenThrow(new ValidationException("Invalid bank ID"));
 
-    BankDetailsResponse result = adminDao.getBankDetails(bankId);
 
-    assertNull(result); // or assert fallback behavior
-    Mockito.verify(adminServicesClient).getBankDetails(bankId);
-}
+@Component
+@RequiredArgsConstructor
+public class MerchantUserDao {
+
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+
+    private final MerchantUserRepository merchantUserRepository;
+    private final UserMenuPermissionRepository userMenuPermissionRepository;
+    private final DefaultUserPermissionRepository defaultUserPermissionRepository;
+    private final MenuInfoRepository menuInfoRepository;
+    private final MerchantEntityUserRepository merchantEntityUserRepository;
+    private final PermissionRepository permissionRepository;
+    private final MerchantUserRoleRepository merchantUserRoleRepository;
+    private final MerchantEntityGroupRepository merchantEntityGroupRepository;
+
+
+    private final MerchantUserRoleDao merchantUserRoleDao;
+    private final NotificationDao notificationDao;
+
+    private final MerchantMapper merchantMapper;
+    private final MerchantConfig merchantConfig;
+    private final PasswordGenerator passwordGenerator;
+    public Page<MerchantUserDto> findMerchantUsers(Pageable pageable, MerchantUserSearchRequest merchantUserSearchRequest, List<UUID> mappedUserIds) {
+        String username = EPayIdentityUtil.getUserPrincipal().getUsername();
+        MerchantUserDto merchantUser = getByUserName(username, UserStatus.ACTIVE);
+        Specification<MerchantUser> specification = MerchantUserSpecification.searchUsers(merchantUser.getId(), merchantUserSearchRequest.getUserName(), merchantUserSearchRequest.getFirstName(), merchantUserSearchRequest.getMobilePhone(), merchantUserSearchRequest.getFromDate(), merchantUserSearchRequest.getToDate(), merchantUserSearchRequest.getStatus(), mappedUserIds);
+        return merchantUserRepository.findAll(specification, pageable).map(this::convertEntityToDTO);
+    }
