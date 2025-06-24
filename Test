@@ -1,105 +1,15 @@
-import com.merchant.config.MerchantConfig;
-import com.merchant.dao.MerchantUserDao;
-import com.merchant.dao.NotificationDao;
-import com.merchant.dao.MerchantUserRoleDao;
-import com.merchant.enums.UserAccessCode;
-import com.merchant.exception.MerchantException;
-import com.merchant.mapper.MerchantMapper;
-import com.merchant.model.MenuInfo;
-import com.merchant.repository.*;
-import com.merchant.utility.LoggerUtility;
-import com.merchant.utility.LoggerFactoryUtility;
-import com.merchant.utility.PasswordGenerator;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.*;
-import org.mockito.junit.jupiter.MockitoExtension;
 
-import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.Mockito.*;
+@Component
+@RequiredArgsConstructor
+public class AdminDao {
 
-@ExtendWith(MockitoExtension.class)
-class MerchantUserDaoTest {
+    public List<BranchResponse> getAllBranches(String bankId) {
+        log.info("Fetching all branches for bank ID {} from external service", bankId);
+        return adminServicesClient.getAllBranches(bankId);
+    }    
 
-    @Mock private MerchantUserRepository merchantUserRepository;
-    @Mock private UserMenuPermissionRepository userMenuPermissionRepository;
-    @Mock private DefaultUserPermissionRepository defaultUserPermissionRepository;
-    @Mock private MenuInfoRepository menuInfoRepository;
-    @Mock private MerchantEntityUserRepository merchantEntityUserRepository;
-    @Mock private PermissionRepository permissionRepository;
-    @Mock private MerchantUserRoleRepository merchantUserRoleRepository;
-    @Mock private MerchantEntityGroupRepository merchantEntityGroupRepository;
-    @Mock private MerchantUserRoleDao merchantUserRoleDao;
-    @Mock private NotificationDao notificationDao;
-    @Mock private MerchantMapper merchantMapper;
-    @Mock private MerchantConfig merchantConfig;
-    @Mock private PasswordGenerator passwordGenerator;
-
-    @InjectMocks
-    private MerchantUserDao merchantUserDao;
-
-    private List<MenuInfo> mockMenuList;
-
-    @BeforeEach
-    void setUp() {
-        mockMenuList = List.of(new MenuInfo(), new MenuInfo());
+public class AdminServicesClient extends ApiClient {
+    public List<BranchResponse> getAllBranches(String bankId) {
+        return getList(BRANCH_DETAILS_ENDPOINT + bankId, new ParameterizedTypeReference<>() {});
     }
-
-    @Test
-    void testGetMenuIdsForSuperAdmin() {
-        List<String> expectedCodes = List.of(
-            UserAccessCode.OPTIONAL_FOR_SUPER_ADMIN_AND_USER.getValue(),
-            UserAccessCode.DEFAULT_FOR_ADMIN_AND_OPTIONAL_FOR_SUPER_ADMIN.getValue()
-        );
-
-        when(menuInfoRepository.findAllIds(expectedCodes)).thenReturn(mockMenuList);
-
-        List<MenuInfo> result = merchantUserDao.getMenuIds("SUPER_ADMIN");
-
-        assertEquals(2, result.size());
-        verify(menuInfoRepository).findAllIds(expectedCodes);
-    }
-
-    @Test
-    void testGetMenuIdsForAdmin() {
-        List<String> expectedCodes = List.of(
-            UserAccessCode.OPTIONAL_FOR_SUPER_ADMIN_AND_USER.getValue(),
-            UserAccessCode.DEFAULT_FOR_ADMIN_AND_OPTIONAL_FOR_SUPER_ADMIN.getValue()
-        );
-
-        when(menuInfoRepository.findAllIds(expectedCodes)).thenReturn(mockMenuList);
-
-        List<MenuInfo> result = merchantUserDao.getMenuIds("ADMIN");
-
-        assertEquals(2, result.size());
-        verify(menuInfoRepository).findAllIds(expectedCodes);
-    }
-
-    @Test
-    void testGetMenuIdsForUser() {
-        List<String> expectedCodes = List.of(
-            UserAccessCode.OPTIONAL_FOR_SUPER_ADMIN_AND_USER.getValue()
-        );
-
-        when(menuInfoRepository.findAllIds(expectedCodes)).thenReturn(mockMenuList);
-
-        List<MenuInfo> result = merchantUserDao.getMenuIds("USER");
-
-        assertEquals(2, result.size());
-        verify(menuInfoRepository).findAllIds(expectedCodes);
-    }
-
-    @Test
-    void testGetMenuIdsForInvalidRole_ThrowsException() {
-        MerchantException exception = assertThrows(
-            MerchantException.class,
-            () -> merchantUserDao.getMenuIds("UNKNOWN")
-        );
-
-        assertEquals("Invalid Error Code", exception.getErrorCode());
-        assertTrue(exception.getMessage().contains("Role"));
-    }
-}
