@@ -1,1 +1,55 @@
 
+@ExtendWith(MockitoExtension.class)
+class CaptchaServiceTest {
+
+    @Mock
+    private MerchantConfig merchantConfig;
+
+    @Mock
+    private CaptchaDao captchaDao;
+
+    @Mock
+    private DefaultKaptcha captchaProducer;
+
+    @Mock
+    private CaptchaValidator captchaValidator;
+
+    @Mock
+    private CaptchaMapper captchaMapper;
+
+    @Mock
+    private SecureRandom random;
+
+    @InjectMocks
+    private CaptchaService captchaService;
+
+    @Test
+    void testGenerateAudioCaptcha_whenVoiceInitializationFails_thenCatchAndFinallyAreTriggered() throws IOException {
+        // Arrange
+        String captchaText = "1234";
+        UUID requestId = UUID.randomUUID();
+        File tempFile = File.createTempFile("test-captcha", ".wav");
+
+        // Force system property check
+        when(merchantConfig.getVoiceDir()).thenReturn("fake.voice.path");
+
+        // Spy the service to override internal methods
+        CaptchaService spyService = Mockito.spy(captchaService);
+
+        // Mock internal method createTempFile to return a valid temp file
+        doReturn(tempFile).when(spyService).createTempFile(any());
+
+        // Mock initializeVoice to return null (to simulate voice init failure)
+        doReturn(null).when(spyService).initializeVoice();
+
+        // Act & Assert
+        MerchantException exception = assertThrows(MerchantException.class, () ->
+                spyService.generateAudioCaptcha(captchaText, requestId)
+        );
+
+        assertEquals(ErrorConstants.GENERATION_ERROR_CODE, exception.getErrorCode());
+
+        // Verify that the file was deleted in the finally block
+        assertFalse(tempFile.exists(), "Temp file should be deleted in finally block");
+    }
+}
