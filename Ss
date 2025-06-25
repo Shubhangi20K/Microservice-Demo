@@ -17,3 +17,45 @@
 
         }
     }
+
+
+@Repository
+@RequiredArgsConstructor
+public class AlertDao {
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+    private final AlertMasterRepository alertMasterRepository;
+    private final AlertManagementRepository alertManagementRepository;
+    private final MerchantInfoDao merchantInfoDao;
+    private final AlertMapper alertMapper;
+
+    public Page<AlertManagementResponse> getAllAlerts(String mId, Pageable pageable) {
+        return getLatestAlertDescription(mId, true, pageable);
+    }
+
+@Repository
+@RequiredArgsConstructor
+public class AlertDao {
+    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+    private final AlertMasterRepository alertMasterRepository;
+    private final AlertManagementRepository alertManagementRepository;
+    private final MerchantInfoDao merchantInfoDao;
+    private final AlertMapper alertMapper;
+private Page<AlertManagementResponse> getLatestAlertDescription(String mId, boolean getAll, Pageable pageable) {
+        // Get user roles
+        List<String> userRoles = EPayIdentityUtil.getUserPrincipal().getUserRole();
+        boolean isUser = checkIsUserRole(userRoles);
+        Page<AlertManagement> alertManagementList;
+        if (isUser) {
+            List<AlertMasterDto> accountExpiryAlerts = findAllAlertByName(ACCOUNT_EXPIRY);
+            List<UUID> excludedAlertIds = getAlertMasterId(accountExpiryAlerts);
+            alertManagementList = getAll
+                    ? alertManagementRepository.findAlerts(mId, excludedAlertIds, pageable)
+                    : alertManagementRepository.findUnreadAlerts(mId, excludedAlertIds, pageable);
+        } else {
+            alertManagementList = getAll
+                    ? alertManagementRepository.findByMId(mId, pageable)
+                    : alertManagementRepository.findUnreadAlertsByMId(mId, pageable);
+        }
+        List<AlertManagementResponse> responses = alertMapper.alertManagementEntityToResponse(alertManagementList.getContent());
+        return new PageImpl<>(responses, pageable, alertManagementList.getTotalElements());
+    }
