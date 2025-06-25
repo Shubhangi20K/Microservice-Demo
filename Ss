@@ -1,1 +1,51 @@
 
+@Service
+@RequiredArgsConstructor
+public class CaptchaService {
+
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+
+    private final MerchantConfig merchantConfig;
+    private final CaptchaDao captchaDao;
+    private final DefaultKaptcha captchaProducer;
+    private final CaptchaValidator captchaValidator;
+    private final CaptchaMapper captchaMapper;
+    private final SecureRandom random;
+
+public byte[] generateAudioCaptcha(String text, UUID requestId) {
+        if(StringUtils.isEmpty(System.getProperty(FREETTS_VOICES)))
+            System.setProperty(FREETTS_VOICES, merchantConfig.getVoiceDir());
+
+        logger.info("Generating audio captcha for requestId: {}", requestId);
+        File tempFile = createTempFile(requestId);
+        if (tempFile == null){
+            logger.error("Temp file creation failed for requestId: {}", requestId);
+            return new byte[0];
+        }
+
+        try {
+            Voice voice = initializeVoice();
+            if (voice == null) {
+                logger.error("Voice initialization failed for requestId: {}", requestId);
+                return new byte[0];
+            }
+
+            SingleFileAudioPlayer audioPlayer = configureAudioPlayer(tempFile);
+            voice.setAudioPlayer(audioPlayer);
+
+            speakCharacters(voice, text);
+            cleanupResources(voice, audioPlayer);
+
+            return validateAndReturnAudio(tempFile, requestId);
+        } catch (Exception e) {
+            logger.error("Error generating speech audio for requestId: {}", requestId, e);
+            throw new MerchantException(ErrorConstants.GENERATION_ERROR_CODE,
+                    MessageFormat.format(ErrorConstants.GENERATION_ERROR_MESSAGE, requestId));
+        } finally {
+            try {
+                Files.delete(tempFile.toPath());
+            } catch (IOException ioException) {
+                logger.warn("Failed to delete temporary file: {}, error: {}", tempFile.getAbsolutePath(), ioException.getMessage());
+            }
+        }
+    }
