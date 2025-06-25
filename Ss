@@ -1,75 +1,19 @@
+ @Test
+    void testGetAllAlerts() {
+        String mId = "someMerchantId";
+        try (MockedStatic<EPayIdentityUtil> identityUtilMock = mockStatic(EPayIdentityUtil.class)) {
+            identityUtilMock.when(EPayIdentityUtil::getUserPrincipal).thenReturn(mockPrincipal);
+            when(mockPrincipal.getUserRole()).thenReturn(List.of("USER"));
+            AlertManagement alertManagement= new AlertManagement();
+            alertManagement.setAlertDescription("AlertDescription");
+            Page<AlertManagement> alertManagementList=;
+            List<UUID> excludedAlertIds=List.of(UUID.randomUUID());
+            Page<AlertManagement> page = new PageImpl<>(Collections.emptyList());
+            when(alertMapper.alertManagementEntityToResponse(anyList()))
+                    .thenReturn(Collections.emptyList());
+            when(alertManagementRepository.findUnreadAlertsByMId(eq(mId), any(Pageable.class))).thenReturn(page);
+            when(alertManagementRepository.findAlerts(mId, excludedAlertIds, any(Pageable.class))).thenReturn();
+            Page<AlertManagementResponse> result = alertDao.getAllAlerts(mId, PageRequest.of(1, 100));
 
-@ExtendWith(MockitoExtension.class)
-class AdminDaoTest {
-
-    @Mock
-    private MerchantRepository merchantRepository;
-
-    @Mock
-    private MerchantUserDao merchantUserDao;
-
-    @Mock
-    private MerchantEntityGroupRepository merchantEntityGroupRepository;
-
-    @Mock
-    private MerchantMapper mapper;
-
-    @Mock
-    private FooterRepository footerRepository;
-
-    @Mock
-    private AdminServicesClient adminServicesClient;
-
-    @Mock
-    private MerchantEntityUserRepository merchantEntityUserRepository;
-
-    @InjectMocks
-    private AdminDao adminDao;
-
-    @Test
-    void testGetBankDetailsByIfscCode_success() {
-        // Arrange
-        String ifscCode = "HDFC0001234";
-        BankDetailsResponse mockResponse = new BankDetailsResponse();
-        List<BankDetailsResponse> responseList = Collections.singletonList(mockResponse);
-
-        Mockito.when(adminServicesClient.getBankDetailsByIfscCode(ifscCode)).thenReturn(responseList);
-
-        // Act
-        BankDetailsResponse result = adminDao.getBankDetailsByIfscCode(ifscCode);
-
-        // Assert
-        Assertions.assertNotNull(result);
-        Assertions.assertEquals(mockResponse, result);
-        Mockito.verify(adminServicesClient).getBankDetailsByIfscCode(ifscCode);
+        }
     }
-
-    @Test
-    void testGetBankDetailsByIfscCode_emptyResponse() {
-        // Arrange
-        String ifscCode = "HDFC0000000";
-        Mockito.when(adminServicesClient.getBankDetailsByIfscCode(ifscCode)).thenReturn(Collections.emptyList());
-
-        // Act & Assert
-        Assertions.assertThrows(IndexOutOfBoundsException.class, () -> {
-            adminDao.getBankDetailsByIfscCode(ifscCode);
-        });
-
-        Mockito.verify(adminServicesClient).getBankDetailsByIfscCode(ifscCode);
-    }
-
-    @Test
-    void testGetBankDetailsByIfscCode_exceptionHandling() {
-        // Arrange
-        String ifscCode = "HDFC0000000";
-        Mockito.when(adminServicesClient.getBankDetailsByIfscCode(ifscCode))
-               .thenThrow(new MerchantException("500", "External service error"));
-
-        // Act & Assert
-        Assertions.assertThrows(MerchantException.class, () -> {
-            adminDao.getBankDetailsByIfscCode(ifscCode);
-        });
-
-        Mockito.verify(adminServicesClient).getBankDetailsByIfscCode(ifscCode);
-    }
-}
