@@ -1,1 +1,27 @@
+@Test
+void testGetAllAlerts() {
+    String mId = "someMerchantId";
+    AlertManagement alertManagement = new AlertManagement();
+    alertManagement.setAlertDescription("Test Alert");
 
+    List<AlertManagement> alertList = List.of(alertManagement);
+    Page<AlertManagement> alertManagementPage = new PageImpl<>(alertList);
+
+    try (MockedStatic<EPayIdentityUtil> identityUtilMock = mockStatic(EPayIdentityUtil.class)) {
+        // Mock principal and its role
+        identityUtilMock.when(EPayIdentityUtil::getUserPrincipal).thenReturn(mockPrincipal);
+        when(mockPrincipal.getUserRole()).thenReturn(List.of("USER"));
+
+        // Mock alert repository and mapper
+        List<UUID> excludedAlertIds = List.of(UUID.randomUUID());
+        when(alertManagementRepository.findAlerts(eq(mId), anyList(), any(Pageable.class)))
+            .thenReturn(alertManagementPage);
+
+        List<AlertManagementResponse> responseList = List.of(new AlertManagementResponse());
+        when(alertMapper.alertManagementEntityToResponse(anyList()))
+            .thenReturn(responseList);
+
+        // If getAlertMasterId or findAllAlertByName are used internally, mock them if needed.
+
+        // Call the method
+        Page<AlertManagementResponse> result = alertDao.getAllAlerts(mId, PageRequest.of(1
