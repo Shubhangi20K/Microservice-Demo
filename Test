@@ -1,1 +1,132 @@
 
+# Db connectivity
+spring:
+  datasource:
+    url: jdbc:oracle:thin:@10.177.134.124:1590:epaydbdev1
+    username: GIREESH_M
+    password: GIREESH_M
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        show_sql: true
+  kafka:
+    bootstrapServers: dev-cluster-kafka-bootstrap.dev-kafka.svc.cluster.local:9092
+  #Email config
+  mail:
+    host: 10.176.245.236
+    port: 587
+    username: sbitestclient
+    password: sbitestclient_7f827c4b3aa6cd1f08d6b9cce2c0c80e
+security:
+  jwt:
+    secret:
+      key: gdjfgskjfhsdjkhkflkdlksdlfkskfwperip3ke3le3lmldrnkfnhiewjfejfokepfkldkfoikfokork3dklwedlsvflvkfkvlkdfvodkvcdokro3
+  cors:
+    origin: https://dev.epay.sbi
+
+key:
+  aek: BiIZ5feKr16Td3XSpVywqXlwRNfSy9Gtis04WqEbD/0=
+
+external:
+  #External Base Path
+  web:
+    transaction:
+      app:
+        base:
+          path: https://dev.epay.sbi/2.0/#
+  api:
+    retry:
+      attempt:
+        count: 3
+        #Duration is in second
+        duration: 2
+    services.base.path:
+      admin: https://dev.epay.sbi/admin/v1
+      kms: https://dev.epay.sbi/kms/v1
+      payment: https://dev.epay.sbi/payments/v1
+      merchant: https://dev.epay.sbi/merchant/v1
+      eis: https://eissiuat.sbi.co.in/gen5/gateway
+      vpa: /upi/sbi/validate-vpa
+      inb: /inb/sbi/initiate
+      other: /other-inb/sbi/initiate
+      visa:
+       master:
+        card: /cards/sbi/visamaster/auth
+      rupay:
+       card:
+         api: /cards/sbi/rupay/auth
+      upi:
+       vpa: /upi/sbi/collect
+      upi:
+       qr: /upi/sbi/qr-sign
+      get:
+       upi:
+        staus:
+          details: /upi/sbi/txn-status
+    # for Gst validation eis
+    gst:
+      services:
+        client:
+          code: SBIUAT101
+        source:
+          id: EY
+        eis:
+          enc.cert.path: /keys/EIS_ENC_UAT.cer
+          client:
+            id: SBI
+          sbi:
+            private:
+              key: keys/SBI_private.key
+    #External call for SMS
+    sms:
+      gateway:
+        base:
+          path: https://smsapipprod.sbi.co.in:9443
+        url: /bmg/sms/epaypgotpdom
+        user: epaypgotpdom
+        password: Ep@y1Dpt
+
+formPostingUrl: https://dev.epay.sbi/2.0/#
+
+#S3 storage config
+sbi:
+  s3:
+    url: https://s3store.bank.sbi/
+    region: ap-south-1
+    key: IDHJO1513FFMMNLPR9BC
+    secret: avXqEPv5B_QqqPK0D1VJzP3pSyAA4x31Zu_KucQ9
+    bucket: epay-nonprod-s3bucket
+
+logging:
+  level:
+    liquibase: DEBUG
+#Email
+email:
+  recipient: ebms_uat_receiver@ebmsgits.sbi.co.in
+  from: ebms_uat_sender@ebmsgits.sbi.co.in
+
+----------------
+
+  @Value("${external.api.services.base.path.vpa}")
+    private String VPA_API_ENDPOINT ;
+    @Value("${external.api.services.base.path.inb}")
+    private String INB_API_ENDPOINT ;
+    @Value("${external.api.services.base.path.other}")
+    private String OTHER_INB_API_ENDPOINT ;
+    @Value("${external.api.services.base.path.visa-master-card}")
+    private String VISA_MASTER_CARD_API_ENDPOINT ;
+    @Value("${external.api.services.base.path.rupay_card_api}")
+    private String RUPAY_CARD_API_ENDPOINT ;
+    @Value("${external.api.services.base.path.upi_vpa}")
+    private String UPI_VPA_ENDPOINT;
+    @Value("${external.api.services.base.path.upi.qr}")
+    private String UPI_QR_ENDPOINT ;
+    @Value("${external.api.services.base.path.get_upi_staus_details}")
+    private String GET_UPI_STATUS_DETAILS;
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    public PaymentServicesClient(String baseUrl, String corsOrigin) {
+        super(baseUrl,corsOrigin);
+    }
