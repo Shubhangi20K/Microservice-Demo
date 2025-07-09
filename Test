@@ -1,1 +1,143 @@
+spring:
+  datasource:
+    url: jdbc:oracle:thin:@10.177.134.124:1590:epaydbdev1
+    username: GIREESH_M
+    password: GIREESH_M
+    hikari:
+      maximum-pool-size: 10
+  jpa:
+    show-sql: true
+    properties:
+      hibernate:
+        show_sql: true
+  liquibase:
+    enabled: false
+    drop-first: false
 
+  mail:
+    host: 10.176.245.236
+    port: 587
+    username: sbitestclient
+    password: sbitestclient_7f827c4b3aa6cd1f08d6b9cce2c0c80e
+
+  kafka:
+    bootstrapServers: dev-cluster-kafka-bootstrap-dev-kafka.apps.dev.sbiepay.sbi:443
+    properties:
+      security.protocol: SSL
+      ssl.truststore.location: C:/certs/kafka/dev-cluster-cluster-ca-cert.p12
+      ssl.truststore.password: Xe8FrxOGvVAx
+      ssl.truststore.type: PKCS12
+      ssl.keystore.location: C:/certs/kafka/dev-cluster-clients-ca-cert.p12
+      ssl.keystore.password: J55FITkgEFid
+      ssl.keystore.type: PKCS12
+    consumer:
+      number-of-consumer: 1
+    topic:
+      transaction:
+        bulkRefund:
+          processBulkRefund: local-process-bulk-refund-topic
+          processBookingDetails: local-process-bookingdetails-topic
+        notification:
+          sms: local_transaction_sms_notification_topic
+          email: local_transaction_email_notification_topic
+        push:
+          verification: local_transaction_push_verification_topic
+
+security:
+  jwt:
+    secret:
+      key: gdjfgskjfhsdjkhkflkdlksdlfkskfwperip3ke3le3lmldrnkfnhiewjfejfokepfkldkfoikfokork3dklwedlsvflvkfkvlkdfvodkvcdokro3
+  cors:
+    origin: https://dev.epay.sbi
+
+key:
+  aek: BiIZ5feKr16Td3XSpVywqXlwRNfSy9Gtis04WqEbD/0=
+
+external:
+  web:
+    transaction:
+      app:
+        base:
+          path: https://dev.epay.sbi/2.0/#
+  api:
+    retry:
+      attempt:
+        count: 3
+        duration: 2 # seconds
+    services:
+      base:
+        path:
+          admin: https://dev.epay.sbi/api/admin/v1
+          kms: https://dev.epay.sbi/api/kms/v1
+          payment: https://dev.epay.sbi/api/payments/v1
+          merchant: https://dev.epay.sbi/api/merchant/v1
+          eis: https://eissiuat.sbi.co.in/gen5/gateway
+      endpoint:
+        vpa: /upi/sbi/validate-vpa
+        inb: /inb/sbi/initiate
+        other: /other-inb/sbi/initiate
+        visa-master-card: /cards/sbi/visamaster/auth
+        rupay-card-api: /cards/sbi/rupay/auth
+        upi-vpa: /upi/sbi/collect
+        upi-qr: /upi/sbi/qr-sign
+        get-upi-status-details: /upi/sbi/txn-status
+    gst:
+      services:
+        client:
+          code: SBIUAT101
+        source:
+          id: EY
+        eis:
+          enc:
+            cert:
+              path: /keys/EIS_ENC_UAT.cer
+          client:
+            id: SBI
+          sbi:
+            private:
+              key: keys/SBI_private.key
+        endpoint: https://eissiuat.sbi.co.in/gen5/gateway/fetchGST/details
+    sms:
+      gateway:
+        base:
+          path: https://smsapipprod.sbi.co.in:9443
+        url: /bmg/sms/epaypgotpdom
+        user: epaypgotpdom
+        password: Ep@y1Dpt
+    transaction:
+      services:
+        base:
+          path: https://eisuat.sbi.co.in/gen5/gateway/thirdParty/wrapper/services
+
+    eis:
+      services:
+        uat:
+          path: E:/project/dcms/epay_transaction_service/src/main/resources/keys/EIS_ENC_UAT.cer
+        url: https://eissiuat.sbi.co.in/gen5/gateway/thirdParty/wrapper/services
+        privatkey:
+          path: E:/project/dcms/epay_transaction_service/src/main/resources/keys/SBI_private.key
+
+formPostingUrl: https://dev.epay.sbi/2.0/#
+paymentCallbackUrl: https://dev.epay.sbi/demo/
+
+sbi:
+  s3:
+    url: https://s3store.bank.sbi/
+    region: ap-south-1
+    key: IDHJO1513FFMMNLPR9BC
+    secret: avXqEPv5B_QqqPK0D1VJzP3pSyAA4x31Zu_KucQ9
+    bucket: epay-nonprod-s3bucket
+
+logging:
+  level:
+    liquibase: DEBUG
+    com.epay: DEBUG
+
+email:
+  recipient: ebms_uat_receiver@ebmsgits.sbi.co.in
+  from: ebms_uat_sender@ebmsgits.sbi.co.in
+
+transaction:
+  kafka:
+    sslConfig:
+      provided: yes
