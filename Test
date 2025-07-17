@@ -1,1 +1,90 @@
+@ExtendWith(MockitoExtension.class)
+class PasswordServiceTest {
+
+    @InjectMocks
+    private PasswordService passwordService;
+
+    @Mock
+    private PasswordValidator passwordValidator;
+
+    @Mock
+    private PasswordManagementDao passwordManagementDao;
+
+    @Mock
+    private MerchantConfig merchantConfig;
+
+    @Mock
+    private Logger log;
+
+    @Mock
+    private PasswordService spyPasswordService;
+
+    private static final String MANDATORY_ERROR_CODE = "MANDATORY";
+
+    @BeforeEach
+    void setUp() {
+        passwordService = Mockito.spy(new PasswordService());
+        ReflectionTestUtils.setField(passwordService, "MANDATORY_ERROR_CODE", MANDATORY_ERROR_CODE);
+        ReflectionTestUtils.setField(passwordService, "log", LoggerFactory.getLogger(PasswordService.class));
+    }
+
+    @Test
+    void testChangePassword_ThrowsValidationException_WithMandatoryErrorCode() {
+        PasswordChangeRequest request = new PasswordChangeRequest();
+        request.setUserName("testUser");
+        request.setNewPassword("encryptedNewPwd");
+        request.setConfirmPassword("encryptedNewPwd");
+
+        // Prepare ErrorDto with MANDATORY_ERROR_CODE
+        ErrorDto errorDto = new ErrorDto();
+        errorDto.setErrorCode(MANDATORY_ERROR_CODE);
+        errorDto.setErrorMessage("Missing password");
+
+        ValidationException validationException = new ValidationException(List.of(errorDto));
+
+        // Make passwordValidator throw validation exception
+        doThrow(validationException).when(passwordValidator).validateChangePassword(request);
+
+        // Execute and verify
+        ValidationException thrown = assertThrows(ValidationException.class, () -> passwordService.changePassword(request));
+
+        assertEquals(1, thrown.getErrorMessages().size());
+        assertEquals(MANDATORY_ERROR_CODE, thrown.getErrorMessages().get(0).getErrorCode());
+
+        // handlePasswordFailure should NOT be called because it's mandatory error
+        verify(passwordService, never()).handlePasswordFailure(anyString(), any(), anyString());
+    }
+}
+
+
+@Test
+void testChangePassword_ThrowsValidationException_WithoutMandatoryErrorCode() {
+    PasswordChangeRequest request = new PasswordChangeRequest();
+    request.setUserName("testUser");
+    request.setNewPassword("encryptedNewPwd");
+    request.setConfirmPassword("encryptedNewPwd");
+
+    // Prepare ErrorDto with NON-mandatory error code
+    ErrorDto errorDto = new ErrorDto();
+    errorDto.setErrorCode("INVALID");
+    errorDto.setErrorMessage("Invalid password format");
+
+    ValidationException validationException = new ValidationException(List.of(errorDto));
+
+    // Simulate validation throwing exception
+    doThrow(validationException).when(passwordValidator).validateChangePassword(request);
+
+    // Mock handlePasswordFailure
+    doNothing().when(passwordService).handlePasswordFailure(anyString(), any(), anyString());
+
+    ValidationException thrown = assertThrows(ValidationException.class, () -> passwordService.changePassword(request));
+
+    // ValidationException still thrown
+    assertEquals("INVALID", thrown.getErrorMessages().get(0).getErrorCode());
+
+    // handlePasswordFailure should be called
+    verify(passwordService, times(1)).handlePasswordFailure(eq("testUser"), eq(RequestType.CHANGE_PASSWORD), anyString());
+}
+
+
 
