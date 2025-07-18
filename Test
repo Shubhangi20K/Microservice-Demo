@@ -1,19 +1,1 @@
-  protected void handlePasswordFailure(String userName, RequestType requestType, String e) {
-        log.info("Handling pwd failure for user: {}, RequestType: {}", userName, requestType);
-        if (StringUtils.isNotEmpty(userName)) {
-            try {
-                passwordManagementDao.saveAudit(userName, requestType, false, e);
-            } catch (MerchantException ex) {
-                log.error("MerchantException in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getErrorMessage());
-            } catch (Exception ex) {
-                log.error("Generic Error in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getMessage());
-            }
-        }
-    }
 
-
-catch (MerchantException ex) {
-                log.error("MerchantException in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getErrorMessage());
-            } catch (Exception ex) {
-                log.error("Generic Error in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getMessage());
-            }
