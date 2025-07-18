@@ -1,1 +1,45 @@
 
+@ExtendWith(MockitoExtension.class)
+class PasswordServiceTest {
+
+    @InjectMocks
+    private PasswordService passwordService;
+
+    @Mock
+    private PasswordManagementDao passwordManagementDao;
+
+    @Mock
+    private Logger log;  // Optional, only if logging is being asserted or checked
+
+    private final String userName = "testUser";
+    private final RequestType requestType = RequestType.RESET_PASSWORD;
+    private final String errorMessage = "Something went wrong";
+
+    @Test
+    void testHandlePasswordFailure_MerchantException() {
+        // Arrange
+        doThrow(new MerchantException("ERR001", "Merchant error occurred"))
+                .when(passwordManagementDao)
+                .saveAudit(eq(userName), eq(requestType), eq(false), eq(errorMessage));
+
+        // Act: Call the method - exception is caught internally
+        assertDoesNotThrow(() -> passwordService.handlePasswordFailure(userName, requestType, errorMessage));
+
+        // Assert: log error can optionally be verified using a spy or logger framework
+        verify(passwordManagementDao).saveAudit(eq(userName), eq(requestType), eq(false), eq(errorMessage));
+    }
+
+    @Test
+    void testHandlePasswordFailure_GenericException() {
+        // Arrange
+        doThrow(new RuntimeException("Database unreachable"))
+                .when(passwordManagementDao)
+                .saveAudit(eq(userName), eq(requestType), eq(false), eq(errorMessage));
+
+        // Act
+        assertDoesNotThrow(() -> passwordService.handlePasswordFailure(userName, requestType, errorMessage));
+
+        // Assert
+        verify(passwordManagementDao).saveAudit(eq(userName), eq(requestType), eq(false), eq(errorMessage));
+    }
+}
