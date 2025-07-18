@@ -1,90 +1,46 @@
-@ExtendWith(MockitoExtension.class)
-class PasswordServiceTest {
+public MerchantResponse<String> resetPassword(PasswordResetRequest pwdResetRequest) {
+        try {
+            log.info("Starting pwd reset process for user: {}", pwdResetRequest.getUserName());
+            // Step 1 : ValidateResetPassword
+            passwordValidator.validateResetPassword(pwdResetRequest);
+            // Step 2 : Decrypt PWD
+            pwdResetRequest.setNewPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdResetRequest.getNewPassword()));
+            pwdResetRequest.setConfirmPassword(decryptValue(merchantConfig.getDecryptionKey(), pwdResetRequest.getConfirmPassword()));
+            log.info("PWD reset request decrypted successfully");
 
-    @InjectMocks
-    private PasswordService passwordService;
+            // Step 3: Validate the pwd reset request
+            validatePasswordReset(pwdResetRequest);
+            log.info("pwd reset request validated successfully");
 
-    @Mock
-    private PasswordValidator passwordValidator;
+            // Step 4: Update the pwd details in the database
+            passwordManagementDao.updatePasswordDetails(pwdResetRequest.getUserName(), pwdResetRequest.getNewPassword(), List.of(UserStatus.ACTIVE, UserStatus.EXPIRED), RequestType.RESET_PASSWORD);
 
-    @Mock
-    private PasswordManagementDao passwordManagementDao;
-
-    @Mock
-    private MerchantConfig merchantConfig;
-
-    @Mock
-    private Logger log;
-
-    @Mock
-    private PasswordService spyPasswordService;
-
-    private static final String MANDATORY_ERROR_CODE = "MANDATORY";
-
-    @BeforeEach
-    void setUp() {
-        passwordService = Mockito.spy(new PasswordService());
-        ReflectionTestUtils.setField(passwordService, "MANDATORY_ERROR_CODE", MANDATORY_ERROR_CODE);
-        ReflectionTestUtils.setField(passwordService, "log", LoggerFactory.getLogger(PasswordService.class));
+            // Step 5: Build and return the success response
+            return MerchantResponse.<String>builder().status(RESPONSE_SUCCESS).data(List.of(MerchantConstant.PWD_RESET_SUCCESSFULLY)).build();
+        } catch (ValidationException e) {
+            e.getErrorMessages().stream().filter(errorCode -> MANDATORY_ERROR_CODE.equals(errorCode.getErrorCode())).forEach(errorCode -> {
+                throw e;
+            });
+            handlePasswordFailure(pwdResetRequest.getUserName(), RequestType.RESET_PASSWORD, e.getErrorMessages().stream().map(ErrorDto::toString).collect(Collectors.joining(", ")));
+            log.error("PWD Reset Request Validation Failed for passwordResetRequest {} ", pwdResetRequest);
+            throw e;
+        } catch (MerchantException e) {
+            handlePasswordFailure(pwdResetRequest.getUserName(), RequestType.RESET_PASSWORD, e.getErrorMessage());
+            log.error("MerchantException : PWD Reset Request Failed for passwordResetRequest {} ", pwdResetRequest);
+            throw e;
+        } catch (Exception e) {
+            handlePasswordFailure(pwdResetRequest.getUserName(), RequestType.RESET_PASSWORD, e.getLocalizedMessage());
+            log.error("Generic Exception : PWD Reset Request Failed for passwordResetRequest {} ", pwdResetRequest);
+            throw new MerchantException(GENERIC_ERROR_CODE, GENERIC_ERROR_MESSAGE);
+        }
     }
 
-    @Test
-    void testChangePassword_ThrowsValidationException_WithMandatoryErrorCode() {
-        PasswordChangeRequest request = new PasswordChangeRequest();
-        request.setUserName("testUser");
-        request.setNewPassword("encryptedNewPwd");
-        request.setConfirmPassword("encryptedNewPwd");
 
-        // Prepare ErrorDto with MANDATORY_ERROR_CODE
-        ErrorDto errorDto = new ErrorDto();
-        errorDto.setErrorCode(MANDATORY_ERROR_CODE);
-        errorDto.setErrorMessage("Missing password");
-
-        ValidationException validationException = new ValidationException(List.of(errorDto));
-
-        // Make passwordValidator throw validation exception
-        doThrow(validationException).when(passwordValidator).validateChangePassword(request);
-
-        // Execute and verify
-        ValidationException thrown = assertThrows(ValidationException.class, () -> passwordService.changePassword(request));
-
-        assertEquals(1, thrown.getErrorMessages().size());
-        assertEquals(MANDATORY_ERROR_CODE, thrown.getErrorMessages().get(0).getErrorCode());
-
-        // handlePasswordFailure should NOT be called because it's mandatory error
-        verify(passwordService, never()).handlePasswordFailure(anyString(), any(), anyString());
-    }
-}
-
-
-@Test
-void testChangePassword_ThrowsValidationException_WithoutMandatoryErrorCode() {
-    PasswordChangeRequest request = new PasswordChangeRequest();
-    request.setUserName("testUser");
-    request.setNewPassword("encryptedNewPwd");
-    request.setConfirmPassword("encryptedNewPwd");
-
-    // Prepare ErrorDto with NON-mandatory error code
-    ErrorDto errorDto = new ErrorDto();
-    errorDto.setErrorCode("INVALID");
-    errorDto.setErrorMessage("Invalid password format");
-
-    ValidationException validationException = new ValidationException(List.of(errorDto));
-
-    // Simulate validation throwing exception
-    doThrow(validationException).when(passwordValidator).validateChangePassword(request);
-
-    // Mock handlePasswordFailure
-    doNothing().when(passwordService).handlePasswordFailure(anyString(), any(), anyString());
-
-    ValidationException thrown = assertThrows(ValidationException.class, () -> passwordService.changePassword(request));
-
-    // ValidationException still thrown
-    assertEquals("INVALID", thrown.getErrorMessages().get(0).getErrorCode());
-
-    // handlePasswordFailure should be called
-    verify(passwordService, times(1)).handlePasswordFailure(eq("testUser"), eq(RequestType.CHANGE_PASSWORD), anyString());
-}
-
-
-
+catch (ValidationException e) {
+            e.getErrorMessages().stream().filter(errorCode -> MANDATORY_ERROR_CODE.equals(errorCode.getErrorCode())).forEach(errorCode -> {
+                throw e;
+            });
+            handlePasswordFailure(pwdResetRequest.getUserName(), RequestType.RESET_PASSWORD, e.getErrorMessages().stream().map(ErrorDto::toString).collect(Collectors.joining(", ")));
+            log.error("PWD Reset Request Validation Failed for passwordResetRequest {} ", pwdResetRequest);
+            throw e;
+        } 
