@@ -1,49 +1,19 @@
-
-@ExtendWith(MockitoExtension.class)
-public class PasswordServiceTest {
-
-    @InjectMocks
-    private PasswordService passwordService; // your service class
-
-    @Mock
-    private PasswordValidator passwordValidator;
-
-    @Mock
-    private MerchantConfig merchantConfig;
-
-    @Mock
-    private PasswordManagementDao passwordManagementDao;
-
-    @Mock
-    private Logger log; // If you're injecting a logger (optional)
-
-    @Test
-    void testResetPassword_ValidationException_NonMandatoryErrorCode() {
-        // Given
-        PasswordResetRequest request = new PasswordResetRequest();
-        request.setUserName("testUser");
-        request.setNewPassword("encryptedPwd");
-        request.setConfirmPassword("encryptedPwd");
-
-        List<ErrorDto> errorList = List.of(
-            new ErrorDto("NON_MANDATORY_CODE", "Some validation error")  // NOT equal to MANDATORY_ERROR_CODE
-        );
-
-        ValidationException validationException = new ValidationException(errorList);
-
-        // When: validator throws exception
-        doThrow(validationException).when(passwordValidator).validateResetPassword(request);
-
-        // Then: Expect ValidationException and verify handlePasswordFailure is called
-        ValidationException thrown = assertThrows(ValidationException.class, () -> {
-            passwordService.resetPassword(request);
-        });
-
-        assertEquals(errorList, thrown.getErrorMessages());
-
-        // Verify handlePasswordFailure is called
-        // Replace handlePasswordFailure with spy if needed
-        // e.g., using spy(passwordService).doNothing().when(...);
-        // For now assuming it's part of same class and accessible for spy
+  protected void handlePasswordFailure(String userName, RequestType requestType, String e) {
+        log.info("Handling pwd failure for user: {}, RequestType: {}", userName, requestType);
+        if (StringUtils.isNotEmpty(userName)) {
+            try {
+                passwordManagementDao.saveAudit(userName, requestType, false, e);
+            } catch (MerchantException ex) {
+                log.error("MerchantException in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getErrorMessage());
+            } catch (Exception ex) {
+                log.error("Generic Error in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getMessage());
+            }
+        }
     }
-}
+
+
+catch (MerchantException ex) {
+                log.error("MerchantException in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getErrorMessage());
+            } catch (Exception ex) {
+                log.error("Generic Error in handlePasswordFailure for userName {}, RequestType {} ", userName, requestType, ex.getMessage());
+            }
