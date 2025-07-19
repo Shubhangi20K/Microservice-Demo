@@ -1,1 +1,36 @@
+@ExtendWith(MockitoExtension.class)
+class CaptchaServiceTest {
 
+    @InjectMocks
+    private CaptchaService captchaService;
+
+    @Mock
+    private MerchantConfig merchantConfig;
+
+    @Test
+    void testGenerateAudioCaptcha_WhenExceptionThrown_ThrowsMerchantException() throws Exception {
+        UUID requestId = UUID.randomUUID();
+        String captchaText = "1234";
+
+        // Mock System.getProperty to return empty initially
+        System.setProperty("freetts.voices", "");
+
+        // Create a spy to mock internal method
+        CaptchaService spyService = Mockito.spy(captchaService);
+
+        // Mock temp file
+        File mockTempFile = File.createTempFile("test", ".wav");
+
+        // Mock behavior
+        Mockito.doReturn(mockTempFile).when(spyService).createTempFile(any());
+        Mockito.doReturn(null).when(spyService).initializeVoice(); // This will cause the voice to be null
+
+        // Act & Assert
+        MerchantException exception = assertThrows(MerchantException.class, () ->
+                spyService.generateAudioCaptcha(captchaText, requestId)
+        );
+
+        assertEquals(ErrorConstants.GENERATION_ERROR_CODE, exception.getErrorCode());
+        assertTrue(exception.getMessage().contains(requestId.toString()));
+    }
+}
