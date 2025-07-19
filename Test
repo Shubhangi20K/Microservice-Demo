@@ -1,45 +1,52 @@
+    public byte[] generateAudioCaptcha(String text, UUID requestId) {
+        if(StringUtils.isEmpty(System.getProperty(FREETTS_VOICES)))
+            System.setProperty(FREETTS_VOICES, merchantConfig.getVoiceDir());
 
-@ExtendWith(MockitoExtension.class)
-class PasswordServiceTest {
+        logger.info("Generating audio captcha for requestId: {}", requestId);
+        File tempFile = createTempFile(requestId);
+        if (tempFile == null){
+            logger.error("Temp file creation failed for requestId: {}", requestId);
+            return new byte[0];
+        }
 
-    @InjectMocks
-    private PasswordService passwordService;
+        try {
+            Voice voice = initializeVoice();
+            if (voice == null) {
+                logger.error("Voice initialization failed for requestId: {}", requestId);
+                return new byte[0];
+            }
 
-    @Mock
-    private PasswordManagementDao passwordManagementDao;
+            SingleFileAudioPlayer audioPlayer = configureAudioPlayer(tempFile);
+            voice.setAudioPlayer(audioPlayer);
 
-    @Mock
-    private Logger log;  // Optional, only if logging is being asserted or checked
+            speakCharacters(voice, text);
+            cleanupResources(voice, audioPlayer);
 
-    private final String userName = "testUser";
-    private final RequestType requestType = RequestType.RESET_PASSWORD;
-    private final String errorMessage = "Something went wrong";
-
-    @Test
-    void testHandlePasswordFailure_MerchantException() {
-        // Arrange
-        doThrow(new MerchantException("ERR001", "Merchant error occurred"))
-                .when(passwordManagementDao)
-                .saveAudit(eq(userName), eq(requestType), eq(false), eq(errorMessage));
-
-        // Act: Call the method - exception is caught internally
-        assertDoesNotThrow(() -> passwordService.handlePasswordFailure(userName, requestType, errorMessage));
-
-        // Assert: log error can optionally be verified using a spy or logger framework
-        verify(passwordManagementDao).saveAudit(eq(userName), eq(requestType), eq(false), eq(errorMessage));
+            return validateAndReturnAudio(tempFile, requestId);
+        } catch (Exception e) {
+            logger.error("Error generating speech audio for requestId: {}", requestId, e);
+            throw new MerchantException(ErrorConstants.GENERATION_ERROR_CODE,
+                    MessageFormat.format(ErrorConstants.GENERATION_ERROR_MESSAGE, requestId));
+        } finally {
+            try {
+                Files.delete(tempFile.toPath());
+            } catch (IOException ioException) {
+                logger.warn("Failed to delete temporary file: {}, error: {}", tempFile.getAbsolutePath(), ioException.getMessage());
+            }
+        }
     }
 
-    @Test
-    void testHandlePasswordFailure_GenericException() {
-        // Arrange
-        doThrow(new RuntimeException("Database unreachable"))
-                .when(passwordManagementDao)
-                .saveAudit(eq(userName), eq(requestType), eq(false), eq(errorMessage));
 
-        // Act
-        assertDoesNotThrow(() -> passwordService.handlePasswordFailure(userName, requestType, errorMessage));
 
-        // Assert
-        verify(passwordManagementDao).saveAudit(eq(userName), eq(requestType), eq(false), eq(errorMessage));
-    }
-}
+
+catch (Exception e) {
+            logger.error("Error generating speech audio for requestId: {}", requestId, e);
+            throw new MerchantException(ErrorConstants.GENERATION_ERROR_CODE,
+                    MessageFormat.format(ErrorConstants.GENERATION_ERROR_MESSAGE, requestId));
+        } finally {
+            try {
+                Files.delete(tempFile.toPath());
+            } catch (IOException ioException) {
+                logger.warn("Failed to delete temporary file: {}, error: {}", tempFile.getAbsolutePath(), ioException.getMessage());
+            }
+        }
