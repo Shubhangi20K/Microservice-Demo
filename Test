@@ -1,9 +1,173 @@
+package com.epay.transaction.controller;
+
+import com.epay.transaction.dto.ReconDataDto;
+import com.epay.transaction.model.request.DeviceDetailsRequest;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.model.response.TransactionTokenResponse;
+import com.epay.transaction.service.ReconSettlementService;
+import com.epay.transaction.service.TokenService;
+import com.epay.transaction.util.TransactionUtil;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import io.swagger.v3.oas.annotations.Operation;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.StringUtils;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.validation.annotation.Validated;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+
+import static com.epay.transaction.util.TransactionConstant.*;
+
+/**
+ *  Class Name:TokenController
+ * <p>
+ *  Description: Token Generation
+ * <p>
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author:@V0000001(Shilpa Kothre)
+ * Version:1.0
+ */
+@RestController
+@RequiredArgsConstructor
+@Validated
+@RequestMapping("/token")
+public class TokenController {
+
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final TokenService tokenService;
+    private final ReconSettlementService reconSettlementService;
+
+    /**
+     * Method name : generateAccessToken
+     * Description : Creates the Access Token
+     * @param merchantApiKeyId : ApiKeyId for Merchant
+     * @param merchantApiKeySecret: ApiKeySecret for Merchant
+     * @return String of AccessToken
+     */
+    @PostMapping("/access")
+    @Operation(summary = "Access Token generation API")
+    public TransactionResponse<String> generateAccessToken(@RequestHeader(name = MERCHANT_API_KEY_ID, defaultValue = StringUtils.EMPTY) String merchantApiKeyId, @RequestHeader(name = MERCHANT_API_KEY_SCRT, defaultValue = StringUtils.EMPTY) String merchantApiKeySecret) {
+        logger.info("Request to generate access token");
+        return tokenService.generateAccessToken(merchantApiKeyId, merchantApiKeySecret);
+    }
+
+    /**
+     * Method name : generateTransactionToken
+     * Description : Creates the Transaction Token
+     * @param orderHash : Defines Unique Order
+     * @param deviceDetailsRequest: Object of deviceDetailsRequest
+     * @return object of TransactionTokenResponse
+     */
     @PostMapping("/txn/{orderHash}")
     @Operation(summary = "Transaction Token generation API")
     public TransactionResponse<TransactionTokenResponse> generateTransactionToken(@RequestHeader("X-Referrer") String businessUrl, HttpServletRequest request, @PathVariable("orderHash") String orderHash, @RequestBody DeviceDetailsRequest deviceDetailsRequest) {
         logger.info("Request to generate transaction token for orderHash {}", orderHash);
         return tokenService.generateTransactionToken(businessUrl, orderHash, deviceDetailsRequest, request.getRemoteAddr());
     }
+
+----------------------------------------------------------------------------------------------------
+package com.epay.transaction.service;
+
+import com.epay.transaction.config.TransactionConfig;
+import com.epay.transaction.dao.TokenDao;
+import com.epay.transaction.dto.DeviceDetailsDto;
+import com.epay.transaction.dto.OrderDto;
+import com.epay.transaction.dto.TokenDto;
+import com.epay.transaction.entity.Token;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.externalservice.response.admin.MerchantInfoResponse;
+import com.epay.transaction.model.request.DeviceDetailsRequest;
+import com.epay.transaction.model.response.TransactionResponse;
+import com.epay.transaction.model.response.TransactionTokenResponse;
+import com.epay.transaction.util.DateTimeUtils;
+import com.epay.transaction.util.EncryptionDecryptionUtil;
+import com.epay.transaction.util.TransactionConstant;
+import com.epay.transaction.util.TransactionErrorConstants;
+import com.epay.transaction.util.enums.TokenStatus;
+import com.epay.transaction.validator.TokenValidator;
+import com.sbi.epay.authentication.model.AccessTokenRequest;
+import com.sbi.epay.authentication.model.TransactionTokenRequest;
+import com.sbi.epay.authentication.service.AuthenticationService;
+import com.sbi.epay.authentication.util.enums.TokenType;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.ObjectUtils;
+import org.springframework.stereotype.Service;
+
+import java.text.MessageFormat;
+import java.util.List;
+import java.util.Optional;
+
+import static com.epay.transaction.util.TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_CODE;
+import static com.epay.transaction.util.TransactionErrorConstants.ATTEMPT_EXPIRED_ERROR_MESSAGE;
+/**
+ * class name : TokenService
+ * Description : Token Generation Service
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author:@V0000001(Shilpa Kothre)
+ * Version:1.0
+ */
+@RequiredArgsConstructor
+@Service
+public class TokenService {
+
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final TokenDao tokenDao;
+    private final AuthenticationService authenticationService;
+    private final TransactionConfig transactionConfig;
+    private final TokenValidator tokenValidator;
+
+    private TokenDto buildAccessToken(AccessTokenRequest tokenRequest, String token) {
+        return TokenDto.builder().generatedToken(token).isTokenValid(true).tokenType(tokenRequest.getTokenType()).tokenExpiryTime(tokenRequest.getExpirationTime()).mId(tokenRequest.getMId()).status(TokenStatus.ACTIVE).build();
+    }
+
+    private DeviceDetailsDto buildTransactionDeviceInfoDto(String orderHash, DeviceDetailsRequest deviceDetailsRequest) {
+        return DeviceDetailsDto.builder().clientIp(deviceDetailsRequest.getClientIp()).orderHash(orderHash).deviceDetail(deviceDetailsRequest.toString()).build();
+    }
+
+    private TokenDto buildTransactionToken(TransactionTokenRequest tokenRequest, String token, String orderHash) {
+        return TokenDto.builder().generatedToken(token).isTokenValid(true).tokenType(tokenRequest.getTokenType()).tokenExpiryTime(tokenRequest.getExpirationTime()).mId(tokenRequest.getMId()).aesKey(EncryptionDecryptionUtil.keyGenerator()).orderHash(orderHash).status(TokenStatus.ACTIVE).build();
+    }
+
+    /**
+     * Method name : generateAccessToken
+     * Description : Creates the Access Token
+     *
+     * @param merchantApiKeyId      : ApiKeyId for Merchant
+     * @param merchantApiKeySecret: ApiKeySecret for Merchant
+     * @return String of AccessToken
+     */
+    public TransactionResponse<String> generateAccessToken(String merchantApiKeyId, String merchantApiKeySecret) {
+        logger.info("Access Token Request with merchantApiKeyId and merchantApiKeySecret");
+        logger.debug("Access Token Request with merchantApiKeyId {}", merchantApiKeyId);
+        tokenValidator.validateTokenRequest(merchantApiKeyId, merchantApiKeySecret);
+        logger.info("access token validation done.");
+        String mId = tokenDao.getMIdByKeyIdAndSecret(merchantApiKeyId, merchantApiKeySecret);
+        logger.info("Request for MerchantInfo for mId {}", mId);
+        MerchantInfoResponse merchantDto = tokenDao.getMerchantByMId(mId);
+        logger.debug("Received merchantDto {} for build Access token", merchantDto);
+        String token = generatingAccessToken(merchantDto, merchantApiKeyId, merchantApiKeySecret);
+        return TransactionResponse.<String>builder().data(List.of(token)).status(TransactionConstant.RESPONSE_SUCCESS).build();
+    }
+
+    /**
+     * Method name : generateTransactionToken
+     * Description : Creates the Transaction Token
+     *
+     * @param orderHash             : Defines Unique Order
+     * @param deviceDetailsRequest: Object of deviceDetailsRequest
+     * @return object of TransactionTokenResponse
+     */
 
     public TransactionResponse<TransactionTokenResponse> generateTransactionToken(String businessUrl, String orderHash, DeviceDetailsRequest deviceDetailsRequest, String clientIp) {
         logger.info("Starting transaction token generation request for orderHash {}", orderHash);
@@ -14,24 +178,218 @@
             deviceDetailsRequest.setClientIp(clientIp);
             tokenDao.saveTransactionRequestedDeviceInfo(buildTransactionDeviceInfoDto(orderHash, deviceDetailsRequest));
         }
+
+        //Step 2 : validate If Token is already create for Given Order Hash
+        logger.info("Fetching Existing Valid token by orderHash");
+        tokenDao.validatedTokenByOrderHash(orderHash);
+
+        //Step 3 : Get Merchant Order By Order Hash
+        OrderDto orderDto = tokenDao.getMerchantOrderByOrderHash(orderHash);
+        logger.debug("Received details of merchant order, orderDto: {}", orderDto);
+
+        //Step 4 : Get Merchant By MID For Token Expiration Time
+        MerchantInfoResponse merchantDto = tokenDao.getMerchantByMId(orderDto.getMId());
+        logger.debug("Received details of Merchant, merchantDto: {}", merchantDto);
+
+        //Step 5 : Validate Business url passed in x-referrer header
+        tokenValidator.validateBusinessUrl(businessUrl, merchantDto.getMerchantBusinessUrl());
+        logger.debug("Business url:{} validated for mId: {}", businessUrl, merchantDto.getMId());
+
+        //Step 6 : Token Generation
+        TransactionTokenResponse transactionTokenResponse = generatingTransactionToken(orderDto, merchantDto.getTransactionTokenExpiryTime());
+        logger.info("Completed transaction token generation request for orderHash {0}", orderHash);
+
+        logger.debug("Received transaction token response: {}", transactionTokenResponse);
+
+        return TransactionResponse.<TransactionTokenResponse>builder().data(List.of(transactionTokenResponse)).status(TransactionConstant.RESPONSE_SUCCESS).build();
+    }
+
+--------------------------------------------
+
+package com.epay.transaction.dao;
+
+import com.epay.transaction.dto.OrderDto;
+import com.epay.transaction.dto.TokenDto;
+import com.epay.transaction.dto.DeviceDetailsDto;
+import com.epay.transaction.entity.Token;
+import com.epay.transaction.exceptions.TransactionException;
+import com.epay.transaction.externalservice.response.admin.MerchantInfoResponse;
+import com.epay.transaction.mapper.TokenMapper;
+import com.epay.transaction.repository.TokenRepository;
+import com.epay.transaction.repository.TransactionDeviceInfoRepository;
+import com.epay.transaction.util.EPayIdentityUtil;
+import com.epay.transaction.util.TransactionErrorConstants;
+import com.epay.transaction.util.enums.EntityType;
+import com.epay.transaction.util.enums.TokenStatus;
+import com.sbi.epay.authentication.util.enums.TokenType;
+import com.sbi.epay.logging.utility.LoggerFactoryUtility;
+import com.sbi.epay.logging.utility.LoggerUtility;
+import jakarta.transaction.Transactional;
+import lombok.RequiredArgsConstructor;
+import org.apache.commons.lang3.ObjectUtils;
+import org.springframework.stereotype.Component;
+
+import java.text.MessageFormat;
+import java.util.Optional;
+
+import static com.epay.transaction.util.TransactionErrorConstants.*;
+
+/**
+ * Class Name:TokenDao
+ * Description: DAO class responsible for handling token-related database operations.
+ * Copyright (c) [2024] [State Bank of India]
+ * All rights reserved.
+ * <p>
+ * Author:@V0000001(Shilpa Kothre)
+ * Version:1.0
+ */
+@Component
+@RequiredArgsConstructor
+public class TokenDao {
+
+    private final LoggerUtility logger = LoggerFactoryUtility.getLogger(this.getClass());
+    private final TokenRepository tokenRepository;
+    private final TransactionDeviceInfoRepository transactionDeviceInfoRepository;
+    private final TokenMapper tokenMapper;
+    private final KmsDao kmsDao;
+    private final AdminDao adminDao;
+    private final OrderDao orderDao;
+    private final ErrorLogDao errorLogDao;
+
+    /**
+     * Method name : saveToken
+     * Description : Saves a token in the database.
+     *
+     * @param tokenDto is an object of TokenDto
+     */
+    public void saveToken(TokenDto tokenDto) {
+        logger.debug("Saving token with details: {}", tokenDto);
+        Token token = tokenMapper.dtoToEntity(tokenDto);
+        tokenRepository.save(token);
+        logger.info("Token saved successfully.");
+    }
+
+    /**
+     * Method name : getMIdByKeyIdAndSecret
+     * Description : Retrieves Merchant ID using API key ID and scrt.
+     *
+     * @param merchantApiKeyId   API key ID of the merchant.
+     * @param merchantApiKeyScrt API key scrt of the merchant.
+     * @return Merchant ID.
+     */
+    public String getMIdByKeyIdAndSecret(String merchantApiKeyId, String merchantApiKeyScrt) {
+        logger.info("Fetching Merchant ID using API key.");
+        return kmsDao.getMIdByKeyIdAndSecret(merchantApiKeyId, merchantApiKeyScrt);
+    }
+
+    /**
+     * Method name : getMerchantByMId
+     * Description : Retrieves merchant details by Merchant ID.
+     *
+     * @param mId Merchant ID.
+     * @return Merchant information response.
+     */
+    public MerchantInfoResponse getMerchantByMId(String mId) {
+        logger.info("Fetching merchant details for MID: {}", mId);
+        return adminDao.getMerchantByMId(mId);
+    }
+
+    /**
+     * Method name : getMerchantOrderByOrderHash
+     * Description : Fetch merchant Order from database using orderHash
+     *
+     * @param orderHash Order hash String
+     * @return Merchant order details.
+     */
+    public OrderDto getMerchantOrderByOrderHash(String orderHash) {
+        logger.info("Fetching merchant order for order hash: {}", orderHash);
+        return orderDao.getActiveOrderByOrderHash(orderHash);
+    }
+
+    /**
+     * Method name : isMerchantExistByMid
+     * Description : Checks if a merchant exists using the Merchant ID.
+     *
+     * @param mId Merchant ID.
+     * @return boolean true if merchant exists, false otherwise.
+     */
+    public boolean isMerchantExistByMid(String mId) {
+        logger.info("Checking if merchant exists for mId: {}", mId);
+        return ObjectUtils.isNotEmpty(adminDao.getMerchantByMId(mId));
+    }
+
+    /**
+     * Method name : invalidateToken
+     * Description : Set token status Inactive
+     *
+     * @param requestedToken Token to be invalidated.
+     */
+    public void invalidateToken(String requestedToken) {
+        logger.info("Invalidating token: {}", requestedToken);
+        Token token = tokenRepository.findFirstByGeneratedTokenAndStatusAndIsTokenValid(requestedToken, TokenStatus.ACTIVE, true).orElseThrow(() -> new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, TransactionErrorConstants.ACTIVE_TOKEN)));
+        markTokenInActive(token);
+        tokenRepository.save(token);
+        logger.info("Token invalidated successfully.");
+    }
+
+    /**
+     * Method name : getActiveAccessTokenByMId
+     * Description : Retrieves an active access token by Merchant ID.
+     *
+     * @param mId Merchant ID.
+     * @return Optional containing TokenDto if found.
+     */
+    public Optional<TokenDto> getActiveAccessTokenByMId(String mId) {
+        logger.info("Finding active ACCESS token for MID: {}", mId);
+        Optional<Token> token = tokenRepository.findLatestValidToken(mId, System.currentTimeMillis());
+        logger.info("ACCESS token found ");
+        return token.map(tokenMapper::entityToDto);
+    }
+
+    /**
+     * Method name : getEncryptionAESKey
+     * Description : Fetch AES key from database
+     *
+     * @param generatedToken Token String
+     * @return a String of AESKey
+     */
+    public String getEncryptionAESKey(String generatedToken) {
+        logger.debug("Fetching AES key for token: {}", generatedToken);
+        Token token = tokenRepository.findFirstByGeneratedTokenAndStatus(generatedToken, TokenStatus.ACTIVE).orElseThrow(() ->
+        {
+            errorLogDao.logBusinessError(EPayIdentityUtil.getUserPrincipal().getMId(), EntityType.PAYMENT,null,null,null,null,
+                    NOT_FOUND_ERROR_CODE, MessageFormat.format(NOT_FOUND_ERROR_MESSAGE, "Encryption Key"));
+            return new TransactionException(TransactionErrorConstants.NOT_FOUND_ERROR_CODE, MessageFormat.format(TransactionErrorConstants.NOT_FOUND_ERROR_MESSAGE, "Encryption Key"));
+        });
+        logger.info("Getting Aes Key");
+        return token.getAesKey();
+    }
+
+    /**
+     * Method name : getHvalBySbiRefenceNumber
+     * Description : Fetch AES key from database
+     *
+     * @param sbiOrderRefNumber String
+     * @return a String of AESKey
+     */
+    public String findAesKeyBySbiOrderRefNumber(String sbiOrderRefNumber) {
+
+        return tokenRepository.findAesKeyBySbiOrderRefNumber(sbiOrderRefNumber).get().getAesKey();
+    }
+
+
+    /**
+     * Method name : saveTransactionRequestedDeviceInfo
+     * Description : saving Device Details Information in database
+     *
+     * @param deviceDetailsDto DTO containing device details.
+     */
     public void saveTransactionRequestedDeviceInfo(DeviceDetailsDto deviceDetailsDto) {
         logger.info("Saving transaction device info: {}", deviceDetailsDto);
         transactionDeviceInfoRepository.save(tokenMapper.dtoToEntity(deviceDetailsDto));
         logger.info("Device information saved successfully.");
     }
-
-@Getter
-@Setter
-@NoArgsConstructor
-@AllArgsConstructor
-@Builder
-public class DeviceDetailsDto {
-    private String orderHash;
-    private String clientIp;
-    private Long createdDate;
-    private String deviceDetail;
-}
-
+------------------------------------------------
 package com.epay.transaction.mapper;
 
 import com.epay.transaction.dto.DeviceDetailsDto;
@@ -83,7 +441,37 @@ public interface TokenMapper {
     TransactionDeviceInfo dtoToEntity(DeviceDetailsDto deviceDetailsDto);
 
 }
+------------------------------------------------------------------
 
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class DeviceDetailsDto {
+    private String orderHash;
+    private String clientIp;
+    private Long createdDate;
+    private String deviceDetail;
+}
+-------------------------------------------------------------------
+package com.epay.transaction.model.request;
+
+
+import lombok.*;
+
+/**
+ * Class Name:DeviceDetailsRequest
+ * *
+ * Description:
+ * *
+ * Author:Shubhangi Kurelay
+ * <p>
+ * Copyright (c) 2024 [State Bank of India]
+ * All right reserved
+ * *
+ * Version:1.0
+ */
 
 @Data
 public class DeviceDetailsRequest {
@@ -98,8 +486,12 @@ public class DeviceDetailsRequest {
     private String language;
     private String userAgent;
 }
+-------------------------------
+--liquibase formatted sql
+--changeset TRANSACTION:115
 
-
+--CREATE table DEVICE_DETAILS
+  
 CREATE TABLE DEVICE_DETAILS
   (
     ID RAW(16) DEFAULT SYS_GUID() PRIMARY KEY,
@@ -108,7 +500,6 @@ CREATE TABLE DEVICE_DETAILS
     DEVICE_DETAILS BLOB,
     CREATED_DATE NUMBER NOT NULL
   ) ;
+-----------------------------------
+ques: how to save details details in this code and device details are blob type
 
-
-
-save the device detais and btype blob
