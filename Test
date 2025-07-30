@@ -1,36 +1,114 @@
-@ExtendWith(MockitoExtension.class)
-class CaptchaServiceTest {
-
-    @InjectMocks
-    private CaptchaService captchaService;
-
-    @Mock
-    private MerchantConfig merchantConfig;
-
-    @Test
-    void testGenerateAudioCaptcha_WhenExceptionThrown_ThrowsMerchantException() throws Exception {
-        UUID requestId = UUID.randomUUID();
-        String captchaText = "1234";
-
-        // Mock System.getProperty to return empty initially
-        System.setProperty("freetts.voices", "");
-
-        // Create a spy to mock internal method
-        CaptchaService spyService = Mockito.spy(captchaService);
-
-        // Mock temp file
-        File mockTempFile = File.createTempFile("test", ".wav");
-
-        // Mock behavior
-        Mockito.doReturn(mockTempFile).when(spyService).createTempFile(any());
-        Mockito.doReturn(null).when(spyService).initializeVoice(); // This will cause the voice to be null
-
-        // Act & Assert
-        MerchantException exception = assertThrows(MerchantException.class, () ->
-                spyService.generateAudioCaptcha(captchaText, requestId)
-        );
-
-        assertEquals(ErrorConstants.GENERATION_ERROR_CODE, exception.getErrorCode());
-        assertTrue(exception.getMessage().contains(requestId.toString()));
+    @PostMapping("/txn/{orderHash}")
+    @Operation(summary = "Transaction Token generation API")
+    public TransactionResponse<TransactionTokenResponse> generateTransactionToken(@RequestHeader("X-Referrer") String businessUrl, HttpServletRequest request, @PathVariable("orderHash") String orderHash, @RequestBody DeviceDetailsRequest deviceDetailsRequest) {
+        logger.info("Request to generate transaction token for orderHash {}", orderHash);
+        return tokenService.generateTransactionToken(businessUrl, orderHash, deviceDetailsRequest, request.getRemoteAddr());
     }
+
+    public TransactionResponse<TransactionTokenResponse> generateTransactionToken(String businessUrl, String orderHash, DeviceDetailsRequest deviceDetailsRequest, String clientIp) {
+        logger.info("Starting transaction token generation request for orderHash {}", orderHash);
+        tokenValidator.validateOrderHash(orderHash);
+        //Step 1 : Save Device Details
+        if (ObjectUtils.isNotEmpty(deviceDetailsRequest)) {
+            logger.debug("Going to save device details, deviceDetails: {} and client ip: {}", deviceDetailsRequest, clientIp);
+            deviceDetailsRequest.setClientIp(clientIp);
+            tokenDao.saveTransactionRequestedDeviceInfo(buildTransactionDeviceInfoDto(orderHash, deviceDetailsRequest));
+        }
+    public void saveTransactionRequestedDeviceInfo(DeviceDetailsDto deviceDetailsDto) {
+        logger.info("Saving transaction device info: {}", deviceDetailsDto);
+        transactionDeviceInfoRepository.save(tokenMapper.dtoToEntity(deviceDetailsDto));
+        logger.info("Device information saved successfully.");
+    }
+
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
+public class DeviceDetailsDto {
+    private String orderHash;
+    private String clientIp;
+    private Long createdDate;
+    private String deviceDetail;
 }
+
+package com.epay.transaction.mapper;
+
+import com.epay.transaction.dto.DeviceDetailsDto;
+import com.epay.transaction.dto.TokenDto;
+import com.epay.transaction.entity.Token;
+import com.epay.transaction.entity.TransactionDeviceInfo;
+import com.epay.transaction.util.DateTimeUtils;
+import org.mapstruct.Builder;
+import org.mapstruct.Mapper;
+import org.mapstruct.Mapping;
+
+/**
+ * Class Name: TokenMapper
+ * *
+ * Description: Define alle pojo to pojo mapping here.
+ * *
+ * Author: VShilpa Kothre
+ * Copyright (c) 2025 [State Bank of India]
+ * All rights reserved
+ * *
+ * Version:1.0
+ */
+@Mapper(builder = @Builder(disableBuilder = true), componentModel = "spring", imports = DateTimeUtils.class)
+public interface TokenMapper {
+
+    /**
+     * Converts a TokenDto object to a Token entity.
+     *
+     * @param tokenDto the TokenDto object to be converted
+     * @return the corresponding Token entity
+     */
+    Token dtoToEntity(TokenDto tokenDto);
+
+    /**
+     * Converts a Token entity to a TokenDto object.
+     *
+     * @param token the Token entity to be converted
+     * @return the corresponding TokenDto object
+     */
+    TokenDto entityToDto(Token token);
+
+    /**
+     * Converts a DeviceDetailsDto object to a TransactionDeviceInfo entity.
+     *
+     * @param deviceDetailsDto the DeviceDetailsDto object to be converted
+     * @return the corresponding TransactionDeviceInfo entity
+     */
+    @Mapping(target = "createdDate", expression = "java(DateTimeUtils.getCurrentTimeInMills())")
+    TransactionDeviceInfo dtoToEntity(DeviceDetailsDto deviceDetailsDto);
+
+}
+
+
+@Data
+public class DeviceDetailsRequest {
+    private String clientIp;
+    private String browser;
+    private String os;
+    private String screenWidth;
+    private String screenHeight;
+    private String colorDepth;
+    private String availableWidth;
+    private String availableHeight;
+    private String language;
+    private String userAgent;
+}
+
+
+CREATE TABLE DEVICE_DETAILS
+  (
+    ID RAW(16) DEFAULT SYS_GUID() PRIMARY KEY,
+    ORDER_HASH VARCHAR2(2000 BYTE),
+    CLIENT_IP  VARCHAR2(100 BYTE),
+    DEVICE_DETAILS BLOB,
+    CREATED_DATE NUMBER NOT NULL
+  ) ;
+
+
+
+save the device detais and btype blob
