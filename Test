@@ -1,42 +1,112 @@
+import static org.mockito.Mockito.*;
+import static org.junit.jupiter.api.Assertions.*;
 
-@Component
-@RequiredArgsConstructor
-public class MerchantUserDao {
+import java.util.*;
 
-    private final LoggerUtility log = LoggerFactoryUtility.getLogger(this.getClass());
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.mockito.*;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 
-    private final MerchantUserRepository merchantUserRepository;
-    private final UserMenuPermissionRepository userMenuPermissionRepository;
-    private final DefaultUserPermissionRepository defaultUserPermissionRepository;
-    private final MenuInfoRepository menuInfoRepository;
-    private final MerchantEntityUserRepository merchantEntityUserRepository;
-    private final PermissionRepository permissionRepository;
-    private final MerchantUserRoleRepository merchantUserRoleRepository;
-    private final MerchantEntityGroupRepository merchantEntityGroupRepository;
+class MerchantUserDaoTest {
 
+    @Mock
+    private MerchantUserRepository merchantUserRepository;
+    @Mock
+    private UserMenuPermissionRepository userMenuPermissionRepository;
+    @Mock
+    private DefaultUserPermissionRepository defaultUserPermissionRepository;
+    @Mock
+    private MenuInfoRepository menuInfoRepository;
+    @Mock
+    private MerchantEntityUserRepository merchantEntityUserRepository;
+    @Mock
+    private PermissionRepository permissionRepository;
+    @Mock
+    private MerchantUserRoleRepository merchantUserRoleRepository;
+    @Mock
+    private MerchantEntityGroupRepository merchantEntityGroupRepository;
 
-    private final MerchantUserRoleDao merchantUserRoleDao;
-    private final NotificationDao notificationDao;
+    @Mock
+    private MerchantUserRoleDao merchantUserRoleDao;
+    @Mock
+    private NotificationDao notificationDao;
+    @Mock
+    private MerchantMapper merchantMapper;
+    @Mock
+    private MerchantConfig merchantConfig;
+    @Mock
+    private PasswordGenerator passwordGenerator;
 
-    private final MerchantMapper merchantMapper;
-    private final MerchantConfig merchantConfig;
-    private final PasswordGenerator passwordGenerator;
+    @InjectMocks
+    private MerchantUserDao merchantUserDao;
 
-public List<MerchantUserDto> getMerchantUsers(MerchantUserSearchRequest merchantUserSearchRequest, List<UUID> mappedUserIds) {
-        String username = EPayIdentityUtil.getUserPrincipal().getUsername();
-        MerchantUserDto merchantUser = getByUserName(username, UserStatus.ACTIVE);
-        merchantUser.setRoleName(getRoleNameByRoleId(merchantUser.getRole()));
-        Specification<MerchantUser> specification = MerchantUserSpecification.searchUsers(merchantUser, merchantUserSearchRequest, mappedUserIds);
-        List<MerchantUser> merchantUsers = merchantUserRepository.findAll(specification, Sort.by(Sort.Direction.DESC, "createdAt"));
-        return merchantMapper.mapMerchantUserEntityListToDtoList(merchantUsers);
+    @BeforeEach
+    void setUp() {
+        MockitoAnnotations.openMocks(this);
     }
 
-    /**
-     * Retrieves all merchant user ids which all mapped with given mId
-     * @return List of UUID
-     */
-    public List<UUID> getMappedUserIdsByMid(String mId) {
-        List<UUID> userIds = merchantEntityUserRepository.findUserIdsByMId(mId);
-        userIds.addAll(merchantEntityGroupRepository.getAllUserIdByMId(mId));
-        return userIds;
+    // ---------- TEST 1 : getMerchantUsers ----------
+    @Test
+    void testGetMerchantUsers_Success() {
+        // Mock user principal
+        MerchantUserDto loggedInUser = new MerchantUserDto();
+        loggedInUser.setUsername("testUser");
+        loggedInUser.setRole("ROLE_ADMIN");
+
+        // Mock static method EPayIdentityUtil.getUserPrincipal()
+        try (MockedStatic<EPayIdentityUtil> mockedUtil = mockStatic(EPayIdentityUtil.class)) {
+            mockedUtil.when(() -> EPayIdentityUtil.getUserPrincipal())
+                    .thenReturn(() -> "testUser"); // Mock principal
+
+            // Mock getByUserName (indirect call)
+            MerchantUserDto merchantUserDto = new MerchantUserDto();
+            merchantUserDto.setUsername("testUser");
+            merchantUserDto.setRole("ROLE_ADMIN");
+            merchantUserDto.setRoleName("Admin Role");
+
+            // Mock repository + mapper
+            MerchantUser entity = new MerchantUser();
+            List<MerchantUser> entityList = List.of(entity);
+            List<MerchantUserDto> dtoList = List.of(new MerchantUserDto());
+
+            when(merchantUserRepository.findAll(any(Specification.class), any(Sort.class)))
+                    .thenReturn(entityList);
+            when(merchantMapper.mapMerchantUserEntityListToDtoList(entityList))
+                    .thenReturn(dtoList);
+
+            // Call method
+            List<MerchantUserDto> result = merchantUserDao.getMerchantUsers(new MerchantUserSearchRequest(), List.of(UUID.randomUUID()));
+
+            // Verify
+            assertNotNull(result);
+            assertEquals(1, result.size());
+            verify(merchantUserRepository, times(1)).findAll(any(Specification.class), any(Sort.class));
+            verify(merchantMapper, times(1)).mapMerchantUserEntityListToDtoList(entityList);
+        }
     }
+
+    // ---------- TEST 2 : getMappedUserIdsByMid ----------
+    @Test
+    void testGetMappedUserIdsByMid_Success() {
+        String mId = "MID123";
+        UUID user1 = UUID.randomUUID();
+        UUID user2 = UUID.randomUUID();
+
+        when(merchantEntityUserRepository.findUserIdsByMId(mId))
+                .thenReturn(new ArrayList<>(List.of(user1)));
+        when(merchantEntityGroupRepository.getAllUserIdByMId(mId))
+                .thenReturn(new ArrayList<>(List.of(user2)));
+
+        List<UUID> result = merchantUserDao.getMappedUserIdsByMid(mId);
+
+        assertNotNull(result);
+        assertEquals(2, result.size());
+        assertTrue(result.contains(user1));
+        assertTrue(result.contains(user2));
+
+        verify(merchantEntityUserRepository, times(1)).findUserIdsByMId(mId);
+        verify(merchantEntityGroupRepository, times(1)).getAllUserIdByMId(mId);
+    }
+}
